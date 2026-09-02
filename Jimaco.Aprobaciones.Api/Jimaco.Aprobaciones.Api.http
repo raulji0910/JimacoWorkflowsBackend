@@ -1,0 +1,6 @@
+@Jimaco.Aprobaciones.Api_HostAddress = http://localhost:5110
+
+GET {{Jimaco.Aprobaciones.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

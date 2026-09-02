@@ -1,0 +1,13 @@
+# Complemento de producción — usar junto con docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# NOTA importante si se despliega en el MISMO servidor Lightsail que Jimaco Cotizaciones:
+# ese servidor ya corre un contenedor "jimaco-caddy" ocupando los puertos 80/443 del host
+# para el dominio de Cotizaciones. No se puede levantar un segundo Caddy en esos mismos
+# puertos. Antes de desplegar esto ahí, agregar un bloque de sitio nuevo (subdominio o
+# ruta) al Caddyfile YA EXISTENTE de Jimaco Cotizaciones apuntando a "web:8080" de este
+# stack, en lugar de correr el servicio "caddy" de este archivo.
+services:
+  api:
+    environment:
+      Cors__AllowedOrigins__0: https://CAMBIAR-DOMINIO-PRODUCCION
