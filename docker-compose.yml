@@ -7,9 +7,9 @@ services:
       ACCEPT_EULA: "Y"
       MSSQL_SA_PASSWORD: ${SA_PASSWORD}
     ports:
-      # Puerto de host distinto al de Jimaco Cotizaciones (1433) para poder correr ambos stacks
-      # a la vez en el mismo equipo de desarrollo sin choque de puertos.
-      - "127.0.0.1:1434:1433"
+      # Puerto de host distinto a Jimaco Cotizaciones (1433) y a Ferrealiados Cotizaciones (1434,
+      # ya ocupado en este equipo) para poder correr los tres stacks a la vez sin choque de puertos.
+      - "127.0.0.1:1435:1433"
     volumes:
       - aprobaciones-db-data:/var/opt/mssql
     healthcheck:

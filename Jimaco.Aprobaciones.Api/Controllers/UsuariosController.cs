@@ -28,13 +28,10 @@ public class UsuariosController(IUsuarioService usuarioService) : ControllerBase
     public async Task<ActionResult<UsuarioDto>> Actualizar(int id, ActualizarUsuarioDto dto, CancellationToken ct) =>
         Ok(await usuarioService.ActualizarAsync(id, dto, UsuarioActualId, ct));
 
-    [HttpPost("{id:int}/cambiar-password")]
-    public async Task<IActionResult> CambiarPassword(int id, CambiarPasswordDto dto, CancellationToken ct)
+    [HttpPost("mi-password")]
+    public async Task<IActionResult> CambiarMiPassword(CambiarPasswordDto dto, CancellationToken ct)
     {
-        if (id != UsuarioActualId)
-            return Forbid();
-
-        await usuarioService.CambiarPasswordAsync(id, dto, ct);
+        await usuarioService.CambiarPasswordAsync(UsuarioActualId, dto, ct);
         return NoContent();
     }
 }
