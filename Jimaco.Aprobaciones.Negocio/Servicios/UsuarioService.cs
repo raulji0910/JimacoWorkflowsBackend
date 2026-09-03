@@ -54,11 +54,15 @@ public class UsuarioService(AppDbContext db) : IUsuarioService
         if (id == usuarioQueEditaId && !dto.Activo)
             throw new InvalidOperationException("No podés desactivarte a vos mismo.");
 
+        if (await db.Usuarios.AnyAsync(u => u.Id != id && u.Email == dto.Email, ct))
+            throw new InvalidOperationException($"Ya existe un usuario con el correo \"{dto.Email}\".");
+
         var roles = await db.Roles.Where(r => dto.RolesIds.Contains(r.Id)).ToListAsync(ct);
         if (roles.Count != dto.RolesIds.Distinct().Count())
             throw new InvalidOperationException("Uno o más roles indicados no existen.");
 
         usuario.Nombre = dto.Nombre;
+        usuario.Email = dto.Email;
         usuario.Telefono = dto.Telefono;
         usuario.Activo = dto.Activo;
 
