@@ -10,6 +10,8 @@ public static class ServiceCollectionExtensions
     {
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IAlmacenamientoArchivos, AlmacenamientoArchivosDisco>();
+        services.AddScoped<IEmailSender, SmtpEmailSender>();
+        services.AddScoped<INotificacionService, NotificacionService>();
         services.AddScoped<IJwtGenerador, JwtGenerador>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IRolService, RolService>();

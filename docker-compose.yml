@@ -36,6 +36,13 @@ services:
       Jwt__ExpiracionMinutos: "480"
       Cors__AllowedOrigins__0: http://localhost:4201
       Almacenamiento__RutaAdjuntos: /adjuntos
+      Smtp__Host: ${SMTP_HOST}
+      Smtp__Port: ${SMTP_PORT}
+      Smtp__UseSsl: ${SMTP_USE_SSL}
+      Smtp__Usuario: ${SMTP_USUARIO}
+      Smtp__Password: ${SMTP_PASSWORD}
+      Smtp__RemitenteNombre: ${SMTP_REMITENTE_NOMBRE}
+      Smtp__RemitenteEmail: ${SMTP_USUARIO}
     volumes:
       - aprobaciones-adjuntos:/adjuntos
     ports:

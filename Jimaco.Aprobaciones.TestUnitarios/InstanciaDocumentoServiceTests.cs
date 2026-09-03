@@ -20,7 +20,7 @@ public class InstanciaDocumentoServiceTests
     }
 
     private static InstanciaDocumentoService CrearServicio(AppDbContext db) =>
-        new(db, Mock.Of<IAlmacenamientoArchivos>(), TimeProvider.System);
+        new(db, Mock.Of<IAlmacenamientoArchivos>(), Mock.Of<INotificacionService>(), TimeProvider.System);
 
     /// <summary>Siembra un tipo de documento con un flujo de 2 pasos: Paso 1 (rol Comercial), Paso 2 (rol Contable). Devuelve (usuarioEmisor, usuarioComercial, usuarioContable, tipoDocumento, paso1, paso2).</summary>
     private static async Task<(Usuario emisor, Usuario comercial, Usuario contable, TipoDocumento tipo, PasoFlujo paso1, PasoFlujo paso2)> SembrarFlujoDeDosPasosAsync(AppDbContext db)

@@ -13,7 +13,11 @@ namespace Jimaco.Aprobaciones.Negocio.Servicios;
 /// Todo lo que sabe sobre "OC" es configuración (TipoDocumento/DefinicionFlujo) — este servicio
 /// no tiene ninguna referencia a un tipo de documento concreto.
 /// </summary>
-public class InstanciaDocumentoService(AppDbContext db, IAlmacenamientoArchivos almacenamiento, TimeProvider timeProvider) : IInstanciaDocumentoService
+public class InstanciaDocumentoService(
+    AppDbContext db,
+    IAlmacenamientoArchivos almacenamiento,
+    INotificacionService notificacionService,
+    TimeProvider timeProvider) : IInstanciaDocumentoService
 {
     public async Task<InstanciaDocumentoDetalleDto> CrearAsync(CrearInstanciaDocumentoDto dto, int usuarioId, CancellationToken ct = default)
     {
@@ -56,6 +60,8 @@ public class InstanciaDocumentoService(AppDbContext db, IAlmacenamientoArchivos 
         });
 
         await db.SaveChangesAsync(ct);
+        await NotificarSinRomperAsync(() => notificacionService.NotificarPasoAsync(instancia.Id, primerPaso.Id, ct));
+
         return await ObtenerAsync(instancia.Id, ct);
     }
 
@@ -170,7 +176,41 @@ public class InstanciaDocumentoService(AppDbContext db, IAlmacenamientoArchivos 
         });
 
         await db.SaveChangesAsync(ct);
+        await NotificarSegunAccionAsync(instancia, dto, ct);
+
         return await ObtenerAsync(instancia.Id, ct);
+    }
+
+    private async Task NotificarSegunAccionAsync(InstanciaDocumento instancia, EjecutarAccionDto dto, CancellationToken ct)
+    {
+        switch (dto.Accion)
+        {
+            case TipoAccion.Aprobado when instancia.PasoActualId is int siguientePasoId:
+                await NotificarSinRomperAsync(() => notificacionService.NotificarPasoAsync(instancia.Id, siguientePasoId, ct));
+                break;
+
+            case TipoAccion.Aprobado: // sin paso actual = quedó Completado
+                await NotificarSinRomperAsync(() => notificacionService.NotificarUsuarioAsync(
+                    instancia.Id, instancia.CreadoPorUsuarioId, "[Jimaco Aprobaciones] Tu documento fue aprobado en todos los pasos",
+                    "Tu documento completó todo el flujo de aprobación.", ct));
+                break;
+
+            case TipoAccion.Devuelto when instancia.PasoActualId is int destinoId:
+                await NotificarSinRomperAsync(() => notificacionService.NotificarPasoAsync(instancia.Id, destinoId, ct));
+                break;
+
+            case TipoAccion.Devuelto: // sin paso destino = vuelve al emisor
+                await NotificarSinRomperAsync(() => notificacionService.NotificarUsuarioAsync(
+                    instancia.Id, instancia.CreadoPorUsuarioId, "[Jimaco Aprobaciones] Tu documento fue devuelto",
+                    $"Motivo: {dto.Comentario}. Corregilo y reenvialo desde \"Mis documentos\".", ct));
+                break;
+
+            case TipoAccion.Rechazado:
+                await NotificarSinRomperAsync(() => notificacionService.NotificarUsuarioAsync(
+                    instancia.Id, instancia.CreadoPorUsuarioId, "[Jimaco Aprobaciones] Tu documento fue rechazado",
+                    $"Motivo: {dto.Comentario}.", ct));
+                break;
+        }
     }
 
     public async Task<InstanciaDocumentoDetalleDto> ReenviarAsync(int id, int usuarioId, CancellationToken ct = default)
@@ -201,6 +241,8 @@ public class InstanciaDocumentoService(AppDbContext db, IAlmacenamientoArchivos 
         });
 
         await db.SaveChangesAsync(ct);
+        await NotificarSinRomperAsync(() => notificacionService.NotificarPasoAsync(instancia.Id, primerPaso.Id, ct));
+
         return await ObtenerAsync(instancia.Id, ct);
     }
 
@@ -246,6 +288,22 @@ public class InstanciaDocumentoService(AppDbContext db, IAlmacenamientoArchivos 
 
         if (faltantes.Count > 0)
             throw new InvalidOperationException($"Faltan campos requeridos: {string.Join(", ", faltantes)}.");
+    }
+
+    // Una notificación que falla (SMTP caído, datos raros, lo que sea) nunca debe tumbar la
+    // acción de negocio que la disparó — ya se aprobó/devolvió/etc. en la base, eso es lo que
+    // importa. NotificacionService ya maneja sus propios errores de envío puntuales; esto cubre
+    // cualquier otra falla inesperada al armar la notificación.
+    private static async Task NotificarSinRomperAsync(Func<Task> notificar)
+    {
+        try
+        {
+            await notificar();
+        }
+        catch
+        {
+            // Deliberadamente silencioso: ver comentario arriba.
+        }
     }
 
     private async Task<List<int>> ObtenerRolesIdsAsync(int usuarioId, CancellationToken ct) =>
