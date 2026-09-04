@@ -164,10 +164,16 @@ minutes, not a long-running service — see `Program.cs`, it runs one pass and e
 **Config** (`appsettings.json`, checked in with placeholder values — real secrets go in
 `appsettings.Local.json`, gitignored, layered on top): `WorldOffice:ConnectionString` (SQL auth as
 `wf_readonly`, `TrustServerCertificate=True` since this is a local-network named instance, not a
-publicly-trusted cert), `Jimaco:ApiBaseUrl`, `Jimaco:UsuarioServicio:Email`/`Password` (a normal
-`Usuario` row, created from the Usuarios admin screen like any other — no roles needed, it never
-approves anything, only creates), `Jimaco:TipoDocumentoOrdenCompraId` (the numeric id of the "Orden
-de Compra" `TipoDocumento` in *this* environment's database — differs between local/prod).
+publicly-trusted cert), `Jimaco:ApiBaseUrl` (now that production exists —
+`https://aprobaciones.54-232-227-230.sslip.io/` — point it there, not at `localhost`, once actually
+installing this on a machine in World Office's network), `Jimaco:UsuarioServicio:Email`/`Password`
+(a normal `Usuario` row, created from the Usuarios admin screen like any other — no roles needed,
+it never approves anything, only creates — remember this has to be created against *whichever*
+environment's database `ApiBaseUrl` points at), `Jimaco:TipoDocumentoOrdenCompraId` (the numeric id
+of the "Orden de Compra" `TipoDocumento` in *this* environment's database — differs between
+local/prod, and **doesn't exist yet in prod** — the prod database is freshly seeded with just the
+admin user, nobody has created the "Orden de Compra" `TipoDocumento`/`DefinicionFlujo`/roles there
+yet, that's a real prerequisite before the Sincronizador can create anything in production).
 
 **Deploying it** (this runs on a machine that is not a dev box and may not have the .NET runtime):
 ```bash
@@ -188,14 +194,50 @@ itself has **not** been run end-to-end against that database yet — this dev ma
 it, only a machine on that LAN can. Don't claim this has been fully tested until someone runs it
 from inside that network.
 
-## Production deployment — NOT set up yet
+## Production deployment (live, 2026-09-04)
 
-No server exists for this project yet. When it's time: **do not deploy without the user's explicit
-go-ahead** (see `feedback_jimaco_deploy_workflow` in memory — same rule applied to Jimaco
-Cotizaciones). If it ends up on the *same* Lightsail box as Jimaco Cotizaciones, read the big
-comment in `docker-compose.prod.yml` first — that server's existing `jimaco-caddy` container
-already owns host ports 80/443 for Cotizaciones' domain, so this app needs a new site block added
-to that *existing* Caddyfile rather than its own `caddy` service.
+**https://aprobaciones.54-232-227-230.sslip.io** — same Lightsail box as Jimaco Cotizaciones and
+Ferrealiados (`54.232.227.230`, São Paulo), by explicit user choice (cheaper than a new instance).
+Repos cloned as siblings under `/opt/jimaco/Jimaco.Aprobaciones` + `Jimaco.Aprobaciones.Web`, same
+as the other two. **Do not redeploy/restart things on this shared box without the user's explicit
+go-ahead** (see `feedback_jimaco_deploy_workflow` in memory) — Jimaco Cotizaciones and Ferrealiados
+are real production systems on it, not just neighbors.
+
+**How it shares Caddy** (no `caddy` service of its own — that server's `jimaco-caddy` already owns
+host ports 80/443): `docker-compose.prod.yml`'s `web` service joins the *external* network
+`jimacocotizaciones_default` (the network Jimaco Cotizaciones' compose project created) in addition
+to its own default network, so `jimaco-caddy` can reach it by container name. The corresponding
+site block lives in `/opt/jimaco/Jimaco.Cotizaciones/Caddyfile` on the server (not in this repo —
+it's a shared file edited by hand):
+```
+aprobaciones.54-232-227-230.sslip.io {
+    reverse_proxy aprobaciones-web:8080
+}
+```
+After editing that file, reload with `docker exec jimaco-caddy caddy reload --config /etc/caddy/Caddyfile`
+— don't `docker compose restart caddy` from the Aprobaciones side, this repo doesn't own that container.
+
+**Memory is genuinely tight on that box** (4GB/2vCPU Lightsail plan, ~635MB "available" measured
+right after this deploy, down from ~1.2GB with just the other two apps running). `db`'s
+`MSSQL_MEMORY_LIMIT_MB=768` (set in `docker-compose.prod.yml`) caps *our* SQL Server specifically —
+the other two don't have a cap set, so if things get slow across all three apps under real load,
+upgrading the Lightsail plan is the fix, not something to solve with more config here.
+
+**Redeploy after pushing changes:**
+```bash
+ssh -i LightsailDefaultKey-sa-east-1.pem ubuntu@54.232.227.230
+cd /opt/jimaco/Jimaco.Aprobaciones && git pull
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+**Still pending on the server** (not blocking, but real gaps — don't assume these are done):
+- `SMTP_PASSWORD` in the server's `.env` is still the placeholder — email notifications will fail
+  to send in production until someone edits that file on the server with the real
+  `sistemas@jimaco.com.co` mailbox password (same as the local `.env`, never pasted into chat/PRs).
+- The seeded `admin@jimaco.local` / `Admin123!` account is live on a public HTTPS URL — change
+  that password via the Usuarios screen before real use, same caveat as Jimaco Cotizaciones always
+  had.
+- No automated DB backups set up for this database yet, same as Jimaco Cotizaciones.
 
 ## Pending decisions (do not assume these have been resolved — check with the user)
 
