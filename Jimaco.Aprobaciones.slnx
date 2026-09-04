@@ -2,5 +2,6 @@
   <Project Path="Jimaco.Aprobaciones.Api/Jimaco.Aprobaciones.Api.csproj" />
   <Project Path="Jimaco.Aprobaciones.Modelo/Jimaco.Aprobaciones.Modelo.csproj" />
   <Project Path="Jimaco.Aprobaciones.Negocio/Jimaco.Aprobaciones.Negocio.csproj" />
+  <Project Path="Jimaco.Aprobaciones.Sincronizador/Jimaco.Aprobaciones.Sincronizador.csproj" />
   <Project Path="Jimaco.Aprobaciones.TestUnitarios/Jimaco.Aprobaciones.TestUnitarios.csproj" />
 </Solution>

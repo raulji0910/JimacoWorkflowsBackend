@@ -12,15 +12,16 @@ document types, their fields, roles, and the sequence/rules of approval steps ar
 (`TipoDocumento`, `DefinicionFlujo`, `PasoFlujo`), configured through admin screens, not code.
 Adding a new document type or changing a flow should never require a deploy.
 
-**V1 scope (current):** documents are created manually in this system (a few key fields + a PDF
-attachment uploaded by the emisor) — there is deliberately **no integration with World Office**
-(the company's accounting ERP) yet. That's a planned Phase 2: World Office exposes a Cloud REST
-API for Compras, but this installation looks like the on-premise/desktop edition (confirmed via
-screenshot: RDP into a dedicated server, World Office 9.0.3 desktop client) — whether that API
-applies to an on-premise license, or the fallback is read-only direct SQL Server access, is still
-pending confirmation from World Office support. See the project memory
-`project_jimaco_workflow_documentos` in the user's Claude memory for the full history of this
-decision if you need it — don't re-derive it from scratch.
+**V1 (manual entry)** still works exactly as below and is the only path actually wired into
+production use today. **Phase 2 (`Jimaco.Aprobaciones.Sincronizador`)** now exists as a working
+prototype — see its own section further down — but hasn't been deployed to the real World Office
+server yet; treat it as built-and-tested-in-isolation, not live. World Office's schema exploration
+(which tables/columns hold an OC, confirmed against 4 real OC PDFs) lives in
+`ProyectosJimaco/WorkflowDocumentos/esquema-worldoffice-oc.md` on the user's machine — read that
+before touching `Jimaco.Aprobaciones.Sincronizador`, don't re-derive the schema from scratch. Also
+see the project memory `project_jimaco_workflow_documentos` for the full decision history
+(including why direct SQL read access was chosen over World Office's Cloud API — this installation
+is on-premise, the Cloud API path was never confirmed usable).
 
 ## Repo layout (two repos, one system — same pattern as Jimaco Cotizaciones)
 
@@ -41,6 +42,9 @@ this org's other .NET projects:
   codes by `Api/Middleware/ExcepcionesMiddleware.cs` (`KeyNotFoundException`→404,
   `UnauthorizedAccessException`→403, `InvalidOperationException`→409) — don't add try/catch in
   controllers for these, the middleware already covers it.
+- `Jimaco.Aprobaciones.Sincronizador` — standalone console tool, **not part of the Docker stack, not
+  deployed to the cloud**. Phase 2 of the World Office integration; see its own section below for
+  why and how it deploys.
 - `Jimaco.Aprobaciones.TestUnitarios` — xUnit + Moq + EF Core InMemory. `InstanciaDocumentoServiceTests.cs`
   covers the workflow engine transitions (create → approve → advance/complete, return, resend,
   role-authorization checks) — this is the most important test file in the repo; extend it before
@@ -121,6 +125,69 @@ docker compose logs api --tail 50             # api applies migrations + seeds a
 Local dev ports are deliberately offset from Jimaco Cotizaciones' (`db` 1434 not 1433, `api` 8081
 not 8080, `web` 4201 not 4200) so both stacks can run side by side on the same dev machine.
 
+## Jimaco.Aprobaciones.Sincronizador (Phase 2 prototype)
+
+**Why this is a separate console tool, not a background job inside the Api container:** the
+World Office SQL Server lives on the hardware store's own local network (on-premise), which has
+outbound internet access but is not reachable *from* the internet (no public IP, no port
+forwarding) — and shouldn't be made reachable, that would mean exposing a SQL Server to the public
+internet. So the connection has to run the other way: a small agent runs *inside* that local
+network (on the World Office server itself, or any PC on that same LAN that can reach the SQL
+instance) and pushes data *out* over a normal outbound HTTPS call to the already-public Jimaco
+Aprobaciones API — the same direction any browser or Windows Update traffic already goes. No VPN,
+no reverse tunnel, no inbound firewall rule needed. See
+`ProyectosJimaco/WorkflowDocumentos/sincronizador-oc.html` for the diagram this was designed from.
+
+**What it does, once per run** (designed to be invoked by a Windows Scheduled Task every few
+minutes, not a long-running service — see `Program.cs`, it runs one pass and exits):
+1. Reads the last processed `IdAsientoContable` from a local JSON file (`WatermarkStore` —
+   `Sincronizador:RutaMarcaDeAgua` in config, defaults to `marca-de-agua.json` next to the exe).
+2. Queries `[CuentasContables - Asientos]` (World Office's generic all-document-types table —
+   see `esquema-worldoffice-oc.md`) for rows with `prefijo = 'OC'`, `senAnulado = 0`, and
+   `IdAsientoContable` past the watermark — via `WorldOfficeReader`, using the read-only
+   `wf_readonly` SQL login. **Nothing in this project ever writes to World Office.**
+3. For each new OC: resolves the proveedor and "elaborado por" (both are `Terceros` rows, joined
+   by `IdTerceroExterno`/`IdTerceroInterno` respectively — `Terceros.NombreCompleto` handles the
+   company-vs-person name shape), and sums `CCA_M_Inventarios.TotalRenglon` for the line-item
+   total (World Office's document header has no total-value column of its own).
+4. Calls the *same* `POST /api/documentos` the manual form uses (`JimacoAprobacionesClient`,
+   reusing `Jimaco.Aprobaciones.Negocio`'s DTOs directly rather than redeclaring them — a service
+   account logs in via the normal `/api/auth/login`, JWT cached and refreshed from its own `exp`
+   claim, same as `documento-detalle.component.ts` does client-side). No special sync-only
+   endpoint exists or should exist — this is a second *caller* of the ordinary creation path, not
+   a privileged backdoor.
+5. Saves the watermark **only after each OC's `CrearAsync` call succeeds** — if one fails, the
+   batch stops right there (doesn't skip it, doesn't keep going past it) so the next run retries
+   from the same point. Deliberately simple; revisit if OC volume ever makes "skip the bad one and
+   keep going" worth the complexity.
+
+**Config** (`appsettings.json`, checked in with placeholder values — real secrets go in
+`appsettings.Local.json`, gitignored, layered on top): `WorldOffice:ConnectionString` (SQL auth as
+`wf_readonly`, `TrustServerCertificate=True` since this is a local-network named instance, not a
+publicly-trusted cert), `Jimaco:ApiBaseUrl`, `Jimaco:UsuarioServicio:Email`/`Password` (a normal
+`Usuario` row, created from the Usuarios admin screen like any other — no roles needed, it never
+approves anything, only creates), `Jimaco:TipoDocumentoOrdenCompraId` (the numeric id of the "Orden
+de Compra" `TipoDocumento` in *this* environment's database — differs between local/prod).
+
+**Deploying it** (this runs on a machine that is not a dev box and may not have the .NET runtime):
+```bash
+dotnet publish Jimaco.Aprobaciones.Sincronizador -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish/sincronizador
+```
+Copy the `publish/sincronizador` folder to the target machine, edit `appsettings.Local.json` there
+with real values (never paste real credentials into a chat/PR — same rule as the `.env` SMTP
+password), then create a Windows Scheduled Task: Action = start
+`Jimaco.Aprobaciones.Sincronizador.exe`, "Start in" = that folder (needed so it finds
+`appsettings.json` and can write `marca-de-agua.json` next to itself), trigger = repeat every few
+minutes, "run whether user is logged on or not" so it survives nobody being logged into that
+server. The account running the task needs write access to that folder (for the watermark file).
+
+**Verified so far:** `JimacoAprobacionesClient` (login, create, token reuse across calls) tested
+against the real local API — works. `WorldOfficeReader`'s queries were validated interactively in
+SSMS against the real World Office database (see `esquema-worldoffice-oc.md`) but the reader class
+itself has **not** been run end-to-end against that database yet — this dev machine can't reach
+it, only a machine on that LAN can. Don't claim this has been fully tested until someone runs it
+from inside that network.
+
 ## Production deployment — NOT set up yet
 
 No server exists for this project yet. When it's time: **do not deploy without the user's explicit
@@ -132,18 +199,19 @@ to that *existing* Caddyfile rather than its own `caddy` service.
 
 ## Pending decisions (do not assume these have been resolved — check with the user)
 
-- **World Office integration (Phase 2).** Not built. Two candidate approaches were identified but
-  neither confirmed: (a) World Office Cloud's REST API (`Compras` module, JWT auth) — unconfirmed
-  whether it's available to this on-premise-looking license; (b) read-only SQL Server access to
-  the World Office database directly (a `wf_readonly` login was drafted, schema not yet explored —
-  see `ProyectosJimaco/WorkflowDocumentos/exploracion-worldoffice.sql` in the user's OneDrive
-  folder). Whichever is chosen, it should only need to *create* an `InstanciaDocumento` via the
-  same `IInstanciaDocumentoService.CrearAsync` path the manual form uses — don't build a second
-  parallel creation path.
-- **Notification provider (Email/WhatsApp).** Not wired. `Notificacion` rows are created but never
-  sent. WhatsApp specifically needs a provider decision (Meta Cloud API vs Twilio, etc.) — the
-  WhatsApp infrastructure from a previous unrelated project (`project_prospeccion_constructoras`)
-  was decommissioned and can't be reused as-is.
+- **World Office integration (Phase 2).** Prototype built (`Jimaco.Aprobaciones.Sincronizador`,
+  see its own section above) using read-only direct SQL Server access — the Cloud API path was
+  never confirmed usable for this on-premise license, so direct SQL read access is what got built.
+  Not yet deployed to the real World Office server, and not yet pointed at a real (non-`localhost`)
+  Jimaco Aprobaciones API, because that API isn't deployed anywhere public yet either — both are
+  still pending the user's go-ahead to actually go live.
+- **Notification provider — Email done, WhatsApp not.** `NotificacionService` + `SmtpEmailSender`
+  send real email today (SMTP directly against the company's own mailbox, e.g.
+  `sistemas@jimaco.com.co` via cPanel — see `Smtp:*` config) and it's been tested delivering to a
+  real inbox. WhatsApp is still unbuilt — the `CanalNotificacion.WhatsApp` value on `Notificacion`
+  exists but nothing dispatches it, and a provider decision (Meta Cloud API vs Twilio) hasn't been
+  made. The WhatsApp infrastructure from a previous unrelated project
+  (`project_prospeccion_constructoras`) was decommissioned and can't be reused as-is.
 - **Visual flow designer.** Out of scope for V1 on purpose — flows are configured via
   CRUD-style admin screens (create role, create step, assign roles/actions per step), not a
   drag-and-drop designer. The data model already supports one being added later as a pure UI layer.

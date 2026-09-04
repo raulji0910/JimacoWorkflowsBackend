@@ -4,3 +4,5 @@ obj/
 *.user
 .env
 adjuntos/
+appsettings.Local.json
+marca-de-agua.json
