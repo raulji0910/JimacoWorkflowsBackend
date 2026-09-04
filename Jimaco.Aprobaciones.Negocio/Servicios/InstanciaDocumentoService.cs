@@ -34,6 +34,22 @@ public class InstanciaDocumentoService(
 
         ValidarCamposRequeridos(tipoDocumento.Campos, dto.Datos);
 
+        var renglones = (dto.Renglones ?? []).Select((r, indice) => new RenglonInstanciaDocumento
+        {
+            Orden = indice + 1,
+            Codigo = r.Codigo,
+            Descripcion = r.Descripcion,
+            Cantidad = r.Cantidad,
+            UnidadMedida = r.UnidadMedida,
+            ValorUnitario = r.ValorUnitario,
+            PorcentajeIva = r.PorcentajeIva,
+            Total = r.Cantidad * r.ValorUnitario
+        }).ToList();
+
+        // Igual que en World Office: si el documento tiene renglones, el valor sale de sumarlos
+        // (fuente de verdad), no del campo tipeado a mano — evita que quede desincronizado.
+        var valor = renglones.Count > 0 ? renglones.Sum(r => r.Total) : dto.Valor;
+
         var ahora = timeProvider.GetUtcNow().UtcDateTime;
         var instancia = new InstanciaDocumento
         {
@@ -43,11 +59,12 @@ public class InstanciaDocumentoService(
             Estado = EstadoInstanciaDocumento.EnProceso,
             NumeroReferencia = dto.NumeroReferencia,
             Proveedor = dto.Proveedor,
-            Valor = dto.Valor,
+            Valor = valor,
             FechaDocumento = dto.FechaDocumento,
             DatosJson = dto.Datos is { Count: > 0 } ? JsonSerializer.Serialize(dto.Datos) : null,
             CreadoPorUsuarioId = usuarioId,
-            FechaCreacion = ahora
+            FechaCreacion = ahora,
+            Renglones = renglones
         };
         db.InstanciasDocumento.Add(instancia);
         db.HistorialAcciones.Add(new HistorialAccion
@@ -315,6 +332,7 @@ public class InstanciaDocumentoService(
             .Include(i => i.PasoActual)
             .Include(i => i.CreadoPorUsuario)
             .Include(i => i.Adjuntos)
+            .Include(i => i.Renglones)
             .Include(i => i.Historial).ThenInclude(h => h.Usuario)
             .Include(i => i.Historial).ThenInclude(h => h.PasoFlujo)
             .AsSplitQuery();
@@ -331,5 +349,7 @@ public class InstanciaDocumentoService(
         i.CreadoPorUsuario.Nombre, i.FechaCreacion,
         i.Adjuntos.Select(a => new AdjuntoDto(a.Id, a.NombreArchivo, a.ContentType, a.TamanoBytes, a.FechaCarga)).ToList(),
         i.Historial.OrderBy(h => h.Fecha).Select(h => new HistorialAccionDto(
-            h.Id, h.PasoFlujo?.Nombre, h.Usuario.Nombre, h.Accion, h.Comentario, h.Fecha)).ToList());
+            h.Id, h.PasoFlujo?.Nombre, h.Usuario.Nombre, h.Accion, h.Comentario, h.Fecha)).ToList(),
+        i.Renglones.OrderBy(r => r.Orden).Select(r => new RenglonDto(
+            r.Id, r.Codigo, r.Descripcion, r.Cantidad, r.UnidadMedida, r.ValorUnitario, r.PorcentajeIva, r.Total)).ToList());
 }

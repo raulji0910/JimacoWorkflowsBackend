@@ -9,6 +9,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 
+// QuestPDF (genera el PDF del documento) requiere fijar el tipo de licencia una vez al arrancar.
+// "Community" es gratis para empresas con ingresos anuales por debajo del umbral que exige QuestPDF
+// (ver https://www.questpdf.com/license/) — aplica sin problema a este negocio.
+QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers()

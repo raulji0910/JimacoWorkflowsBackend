@@ -18,6 +18,13 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 COPY --from=build /app .
 
+# QuestPDF (generación de PDF) usa SkiaSharp por debajo, que en Linux depende de fontconfig +
+# fuentes reales del sistema operativo — la imagen base no trae ninguna. Sin esto, el texto se
+# genera con glifos mal resueltos y se "comen" letras/combinaciones (ej. "Emitido" salía "Emido").
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fontconfig fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 # El contenedor corre como usuario no-root ($APP_UID) por seguridad. El volumen de adjuntos
 # (named volume, montado en /adjuntos) se inicializa la primera vez copiando el contenido y
 # los permisos de esta carpeta de la imagen — por eso hay que crearla y darle dueño ACÁ, antes

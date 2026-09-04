@@ -3,13 +3,14 @@ using Jimaco.Aprobaciones.Negocio.DTOs;
 using Jimaco.Aprobaciones.Negocio.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Net.Http.Headers;
 
 namespace Jimaco.Aprobaciones.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class DocumentosController(IInstanciaDocumentoService instanciaService) : ControllerBase
+public class DocumentosController(IInstanciaDocumentoService instanciaService, IDocumentoPdfGenerador pdfGenerador) : ControllerBase
 {
     private int UsuarioActualId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
@@ -47,6 +48,26 @@ public class DocumentosController(IInstanciaDocumentoService instanciaService) :
         await using var stream = archivo.OpenReadStream();
         var resultado = await instanciaService.AgregarAdjuntoAsync(id, archivo.FileName, archivo.ContentType, stream, UsuarioActualId, ct);
         return Ok(resultado);
+    }
+
+    /// <summary>
+    /// El PDF propio (mismo formato visual que World Office, generado desde nuestros datos —
+    /// no el adjunto). Se sirve "inline" a propósito: el navegador lo abre en su visor de PDF en
+    /// vez de forzar una descarga, para que el frontend lo pueda mostrar como vista previa.
+    /// </summary>
+    [HttpGet("{id:int}/pdf")]
+    public async Task<IActionResult> ObtenerPdf(int id, CancellationToken ct)
+    {
+        var documento = await instanciaService.ObtenerAsync(id, ct);
+        var pdf = pdfGenerador.Generar(documento);
+
+        var nombreArchivo = $"{documento.TipoDocumentoNombre} {documento.NumeroReferencia}.pdf".Trim();
+        Response.Headers.ContentDisposition = new ContentDispositionHeaderValue("inline")
+        {
+            FileNameStar = nombreArchivo
+        }.ToString();
+
+        return File(pdf, "application/pdf");
     }
 
     [HttpGet("adjuntos/{adjuntoId:int}")]

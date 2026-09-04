@@ -16,6 +16,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<InstanciaDocumento> InstanciasDocumento => Set<InstanciaDocumento>();
     public DbSet<Adjunto> Adjuntos => Set<Adjunto>();
     public DbSet<HistorialAccion> HistorialAcciones => Set<HistorialAccion>();
+    public DbSet<RenglonInstanciaDocumento> RenglonesInstanciaDocumento => Set<RenglonInstanciaDocumento>();
     public DbSet<Notificacion> Notificaciones => Set<Notificacion>();
 
     /// <summary>Id fijo del rol sembrado en la migración inicial — útil para lógica de arranque (ver SeedAdminAsync en Program.cs).</summary>
@@ -165,6 +166,19 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 .WithMany()
                 .HasForeignKey(h => h.UsuarioId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<RenglonInstanciaDocumento>(e =>
+        {
+            e.Property(r => r.Cantidad).HasPrecision(18, 3);
+            e.Property(r => r.ValorUnitario).HasPrecision(18, 2);
+            e.Property(r => r.PorcentajeIva).HasPrecision(5, 4);
+            e.Property(r => r.Total).HasPrecision(18, 2);
+
+            e.HasOne(r => r.InstanciaDocumento)
+                .WithMany(i => i.Renglones)
+                .HasForeignKey(r => r.InstanciaDocumentoId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Notificacion>(e =>

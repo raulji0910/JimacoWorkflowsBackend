@@ -59,4 +59,5 @@ public class InstanciaDocumento
 
     public ICollection<Adjunto> Adjuntos { get; set; } = [];
     public ICollection<HistorialAccion> Historial { get; set; } = [];
+    public ICollection<RenglonInstanciaDocumento> Renglones { get; set; } = [];
 }
