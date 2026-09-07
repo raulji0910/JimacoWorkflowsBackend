@@ -238,6 +238,9 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
   that password via the Usuarios screen before real use, same caveat as Jimaco Cotizaciones always
   had.
 - No automated DB backups set up for this database yet, same as Jimaco Cotizaciones.
+- `App__FrontendBaseUrl` in the server's `docker-compose.prod.yml` still needs the real domain
+  (same placeholder pattern as `Cors__AllowedOrigins__0`) — until edited, the "aprobar/rechazar
+  desde el correo" links in notification emails will point at the wrong host in production.
 
 ## Pending decisions (do not assume these have been resolved — check with the user)
 
@@ -254,6 +257,29 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
   exists but nothing dispatches it, and a provider decision (Meta Cloud API vs Twilio) hasn't been
   made. The WhatsApp infrastructure from a previous unrelated project
   (`project_prospeccion_constructoras`) was decommissioned and can't be reused as-is.
+- **Aprobar/rechazar desde el correo (2026-09-07) — construido.** El correo de "documento
+  pendiente" (`NotificacionService.NotificarPasoAsync`) incluye un link a
+  `{App:FrontendBaseUrl}/accion-correo/{id}?token=...` que permite ver el PDF y aprobar/rechazar
+  con comentario **sin loguearse**. El token lo genera `IJwtGenerador.GenerarTokenAccionCorreo`
+  (JWT normal firmado con el mismo `Jwt:Secret`, pero con `purpose=correo-accion` + `doc={id}` y
+  sin claims de Rol — los roles se re-consultan en BD igual que en un login real) y vence en
+  `Jwt:VigenciaAccionCorreoDias` (7 por defecto). **Importante por seguridad**: el link NUNCA
+  aprueba solo con abrirse (muchos clientes de correo/antivirus pre-visitan los links
+  automáticamente) — hace falta un clic explícito en la página, que dispara el `POST` real. El
+  alcance del token está acotado por `TokenCorreoActionFilter` (filtro global registrado en
+  `Program.cs`): si el JWT trae `purpose=correo-accion`, solo puede pegarle a acciones marcadas con
+  `[PermiteTokenCorreo]` (`Obtener`, `ObtenerPdf`, `EjecutarAccion` en `DocumentosController`) y
+  únicamente si el `{id}` de la ruta coincide con el `doc` del token — cualquier otro endpoint, o el
+  mismo endpoint con otro id, da 403 aunque el JWT sea válido. Verificado end-to-end con Playwright:
+  ver sin login, aprobar de verdad (avanza el paso), y reutilizar el mismo link después de que el
+  paso ya avanzó a un rol distinto (rechazado con 403 y mensaje claro, no aprueba silenciosamente).
+  Config nueva: `App:FrontendBaseUrl` (en `docker-compose.yml`/`docker-compose.prod.yml`, este
+  último con placeholder `CAMBIAR-DOMINIO-PRODUCCION` — **al desplegar en el servidor, poner el
+  dominio real ahí igual que ya se hace con `Cors__AllowedOrigins__0`**, si no los links de los
+  correos van a apuntar mal). Página del lado del frontend: `accion-correo.component.ts` (fuera del
+  `authGuard`, ver `app.routes.ts`), usa un `HttpContextToken` (`TOKEN_CORREO` en
+  `auth.interceptor.ts`) para que el interceptor use el token del link en vez de (o aunque exista)
+  una sesión logueada en el mismo navegador.
 - **Visual flow designer.** Out of scope for V1 on purpose — flows are configured via
   CRUD-style admin screens (create role, create step, assign roles/actions per step), not a
   drag-and-drop designer. The data model already supports one being added later as a pure UI layer.

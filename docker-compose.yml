@@ -35,6 +35,7 @@ services:
       Jwt__Audience: Jimaco.Aprobaciones
       Jwt__ExpiracionMinutos: "480"
       Cors__AllowedOrigins__0: http://localhost:4201
+      App__FrontendBaseUrl: http://localhost:4201
       Almacenamiento__RutaAdjuntos: /adjuntos
       Smtp__Host: ${SMTP_HOST}
       Smtp__Port: ${SMTP_PORT}

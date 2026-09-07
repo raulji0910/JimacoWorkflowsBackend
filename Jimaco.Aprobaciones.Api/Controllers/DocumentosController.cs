@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Jimaco.Aprobaciones.Api.Middleware;
 using Jimaco.Aprobaciones.Negocio.DTOs;
 using Jimaco.Aprobaciones.Negocio.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -19,6 +20,7 @@ public class DocumentosController(IInstanciaDocumentoService instanciaService, I
         Ok(await instanciaService.CrearAsync(dto, UsuarioActualId, ct));
 
     [HttpGet("{id:int}")]
+    [PermiteTokenCorreo]
     public async Task<ActionResult<InstanciaDocumentoDetalleDto>> Obtener(int id, CancellationToken ct) =>
         Ok(await instanciaService.ObtenerAsync(id, ct));
 
@@ -31,6 +33,7 @@ public class DocumentosController(IInstanciaDocumentoService instanciaService, I
         Ok(await instanciaService.ListarMisDocumentosAsync(UsuarioActualId, ct));
 
     [HttpPost("{id:int}/acciones")]
+    [PermiteTokenCorreo]
     public async Task<ActionResult<InstanciaDocumentoDetalleDto>> EjecutarAccion(int id, EjecutarAccionDto dto, CancellationToken ct) =>
         Ok(await instanciaService.EjecutarAccionAsync(id, UsuarioActualId, dto, ct));
 
@@ -56,6 +59,7 @@ public class DocumentosController(IInstanciaDocumentoService instanciaService, I
     /// vez de forzar una descarga, para que el frontend lo pueda mostrar como vista previa.
     /// </summary>
     [HttpGet("{id:int}/pdf")]
+    [PermiteTokenCorreo]
     public async Task<IActionResult> ObtenerPdf(int id, CancellationToken ct)
     {
         var documento = await instanciaService.ObtenerAsync(id, ct);

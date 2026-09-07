@@ -11,3 +11,4 @@ services:
   api:
     environment:
       Cors__AllowedOrigins__0: https://CAMBIAR-DOMINIO-PRODUCCION
+      App__FrontendBaseUrl: https://CAMBIAR-DOMINIO-PRODUCCION

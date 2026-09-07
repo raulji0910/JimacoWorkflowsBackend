@@ -2,6 +2,7 @@ using Jimaco.Aprobaciones.Modelo;
 using Jimaco.Aprobaciones.Modelo.Entidades;
 using Jimaco.Aprobaciones.Negocio.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Jimaco.Aprobaciones.Negocio.Servicios;
@@ -12,7 +13,13 @@ namespace Jimaco.Aprobaciones.Negocio.Servicios;
 /// se deja creada la fila en <see cref="Notificacion"/> por completitud del historial, pero queda
 /// en estado Pendiente sin que nada la despache.
 /// </summary>
-public class NotificacionService(AppDbContext db, IEmailSender emailSender, TimeProvider timeProvider, ILogger<NotificacionService> logger)
+public class NotificacionService(
+    AppDbContext db,
+    IEmailSender emailSender,
+    IJwtGenerador jwtGenerador,
+    IConfiguration configuration,
+    TimeProvider timeProvider,
+    ILogger<NotificacionService> logger)
     : INotificacionService
 {
     public async Task NotificarPasoAsync(int instanciaDocumentoId, int pasoFlujoId, CancellationToken ct = default)
@@ -32,20 +39,34 @@ public class NotificacionService(AppDbContext db, IEmailSender emailSender, Time
             .Distinct()
             .ToListAsync(ct);
 
+        var frontendBaseUrl = (configuration["App:FrontendBaseUrl"] ?? "").TrimEnd('/');
+        var vigenciaDias = int.TryParse(configuration["Jwt:VigenciaAccionCorreoDias"], out var d) ? d : 7;
+
         var asunto = $"[Jimaco Aprobaciones] {instancia.TipoDocumento.Nombre} {instancia.NumeroReferencia} pendiente de tu aprobación";
-        var cuerpo = $"""
-            <p>Tenés un documento pendiente en el paso <strong>{paso.Nombre}</strong>:</p>
-            <ul>
-              <li>Tipo: {instancia.TipoDocumento.Nombre}</li>
-              <li>Referencia: {instancia.NumeroReferencia}</li>
-              <li>Proveedor: {instancia.Proveedor}</li>
-              <li>Valor: {instancia.Valor}</li>
-            </ul>
-            <p>Entrá al sistema para revisarlo.</p>
-            """;
 
         foreach (var usuario in destinatarios)
+        {
+            // Token acotado a este usuario + este documento puntual (ver GenerarTokenAccionCorreo) —
+            // permite ver el PDF y aprobar/rechazar con comentario directamente desde el correo, sin
+            // loguearse, pero no sirve para nada más si el correo se reenvía o se filtra.
+            var token = jwtGenerador.GenerarTokenAccionCorreo(usuario.Id, instancia.Id, TimeSpan.FromDays(vigenciaDias));
+            var linkAccion = $"{frontendBaseUrl}/accion-correo/{instancia.Id}?token={Uri.EscapeDataString(token)}";
+
+            var cuerpo = $"""
+                <p>Tenés un documento pendiente en el paso <strong>{paso.Nombre}</strong>:</p>
+                <ul>
+                  <li>Tipo: {instancia.TipoDocumento.Nombre}</li>
+                  <li>Referencia: {instancia.NumeroReferencia}</li>
+                  <li>Proveedor: {instancia.Proveedor}</li>
+                  <li>Valor: {instancia.Valor}</li>
+                </ul>
+                <p><a href="{linkAccion}">Ver el documento y aprobar/rechazar</a></p>
+                <p style="color:#666;font-size:12px">Este link es personal, vence en {vigenciaDias} días y no
+                requiere iniciar sesión. Si preferís, también podés entrar al sistema normalmente.</p>
+                """;
+
             await CrearYEnviarAsync(instancia.Id, usuario, asunto, cuerpo, ct);
+        }
     }
 
     public async Task NotificarUsuarioAsync(int instanciaDocumentoId, int usuarioId, string asunto, string mensaje, CancellationToken ct = default)
