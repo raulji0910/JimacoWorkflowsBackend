@@ -71,7 +71,7 @@ public class DocumentoPdfGenerador : IDocumentoPdfGenerador
                     // ---- Encabezado: logo + caja de título/número, estilo World Office ----
                     col.Item().Row(fila =>
                     {
-                        fila.ConstantItem(150).Height(60).Image(Logo).FitArea();
+                        fila.ConstantItem(220).Height(85).Image(Logo).FitArea();
                         fila.RelativeItem();
                         fila.ConstantItem(180).Table(tabla =>
                         {
@@ -169,6 +169,7 @@ public class DocumentoPdfGenerador : IDocumentoPdfGenerador
                                 c.ConstantColumn(22);
                                 c.ConstantColumn(55);
                                 c.RelativeColumn(3);
+                                c.ConstantColumn(22);
                                 c.ConstantColumn(40);
                                 c.ConstantColumn(40);
                                 c.ConstantColumn(65);
@@ -181,6 +182,7 @@ public class DocumentoPdfGenerador : IDocumentoPdfGenerador
                                 CeldaEncabezado(encabezado.Cell(), "#");
                                 CeldaEncabezado(encabezado.Cell(), "Código");
                                 CeldaEncabezado(encabezado.Cell(), "Descripción");
+                                CeldaEncabezado(encabezado.Cell(), "Ver");
                                 CeldaEncabezado(encabezado.Cell(), "Cant.");
                                 CeldaEncabezado(encabezado.Cell(), "U Med");
                                 CeldaEncabezado(encabezado.Cell(), "Vlr. Unit.");
@@ -195,6 +197,7 @@ public class DocumentoPdfGenerador : IDocumentoPdfGenerador
                                 CeldaDato(tabla.Cell(), numero.ToString());
                                 CeldaDato(tabla.Cell(), r.Codigo ?? "");
                                 CeldaDato(tabla.Cell(), r.Descripcion);
+                                CeldaDatoCentrado(tabla.Cell(), "☐");
                                 CeldaDato(tabla.Cell(), $"{r.Cantidad:0.##}");
                                 CeldaDato(tabla.Cell(), r.UnidadMedida ?? "");
                                 CeldaDato(tabla.Cell(), FormatoMoneda(r.ValorUnitario));
@@ -218,17 +221,22 @@ public class DocumentoPdfGenerador : IDocumentoPdfGenerador
                         });
                     }
 
-                    // ---- Elaborado por / Aprobado por ----
+                    // ---- Elaborado por / Aprobado por: una sola franja por campo (etiqueta +
+                    // valor en la misma fila), igual que el resto de secciones y que el original
+                    // de World Office — antes iba en dos filas separadas (etiquetas arriba,
+                    // valores abajo), que no calzaba con el formato real.
                     col.Item().PaddingTop(10).Table(tabla =>
                     {
                         tabla.ColumnsDefinition(c =>
                         {
                             c.RelativeColumn();
+                            c.RelativeColumn(2);
                             c.RelativeColumn();
+                            c.RelativeColumn(2);
                         });
                         tabla.Cell().Element(EtiquetaVerde).Text("ELABORADO POR:");
-                        tabla.Cell().Element(EtiquetaVerde).Text("APROBADO POR:");
                         tabla.Cell().Element(ValorConBorde).Text(d.CreadoPorNombre);
+                        tabla.Cell().Element(EtiquetaVerde).Text("APROBADO POR:");
                         tabla.Cell().Element(ValorConBorde)
                             .Text(aprobadoPor is null ? "Pendiente" : $"{aprobadoPor.UsuarioNombre} ({aprobadoPor.Fecha.ToString("d MMM yyyy", CulturaEsCo)})");
                     });
@@ -290,6 +298,9 @@ public class DocumentoPdfGenerador : IDocumentoPdfGenerador
     private static void CeldaDato(IContainer contenedor, string texto) =>
         contenedor.Border(0.75f).BorderColor(Colors.Grey.Lighten1).Padding(3).Text(texto).FontSize(7.5f);
 
+    private static void CeldaDatoCentrado(IContainer contenedor, string texto) =>
+        contenedor.Border(0.75f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter().Text(texto).FontSize(9);
+
     // Franja verde de etiqueta, igual que las cabeceras de sección de World Office (PROVEEDOR,
     // FECHA DOCUMENTO, etc.) — texto blanco en negrita sobre fondo verde, con borde fino.
     private static IContainer EtiquetaVerde(IContainer contenedor) =>
@@ -300,5 +311,5 @@ public class DocumentoPdfGenerador : IDocumentoPdfGenerador
     private static IContainer ValorConBorde(IContainer contenedor) =>
         contenedor.Border(0.75f).BorderColor(Colors.Grey.Lighten1).Padding(4);
 
-    private static string FormatoMoneda(decimal valor) => $"$ {valor:N0}";
+    private static string FormatoMoneda(decimal valor) => $"$ {valor.ToString("N0", CulturaEsCo)}";
 }
