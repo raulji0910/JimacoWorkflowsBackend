@@ -64,3 +64,5 @@ public record InstanciaDocumentoDetalleDto(
     IReadOnlyList<RenglonDto> Renglones);
 
 public record EjecutarAccionDto(TipoAccion Accion, string? Comentario);
+
+public record ReenvioNotificacionResultadoDto(int Enviadas, int Fallidas);

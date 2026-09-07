@@ -263,6 +263,33 @@ public class InstanciaDocumentoService(
         return await ObtenerAsync(instancia.Id, ct);
     }
 
+    public async Task<ReenvioNotificacionResultadoDto> ReenviarNotificacionAsync(int id, int usuarioId, CancellationToken ct = default)
+    {
+        var instancia = await db.InstanciasDocumento.FirstOrDefaultAsync(i => i.Id == id, ct)
+            ?? throw new KeyNotFoundException("Documento no encontrado.");
+
+        if (instancia.CreadoPorUsuarioId != usuarioId)
+            throw new UnauthorizedAccessException("Solo quien emitió el documento puede reenviar su notificación.");
+
+        if (instancia.Estado != EstadoInstanciaDocumento.EnProceso || instancia.PasoActualId is null)
+            throw new InvalidOperationException("El documento no tiene un paso activo pendiente de notificar.");
+
+        // NotificarPasoAsync nunca lanza excepción por un envío fallido (queda registrado como
+        // Fallida en Notificacion, sin romper nada) — por eso, a diferencia del envío automático de
+        // Crear/EjecutarAccion, acá leemos las filas que se acaban de crear para poder devolverle a
+        // quien pidió el reenvío si de verdad salió o no.
+        var antes = timeProvider.GetUtcNow().UtcDateTime;
+        await notificacionService.NotificarPasoAsync(instancia.Id, instancia.PasoActualId.Value, ct);
+
+        var nuevas = await db.Notificaciones
+            .Where(n => n.InstanciaDocumentoId == instancia.Id && n.FechaCreacion >= antes)
+            .ToListAsync(ct);
+
+        return new ReenvioNotificacionResultadoDto(
+            nuevas.Count(n => n.Estado == EstadoNotificacion.Enviada),
+            nuevas.Count(n => n.Estado == EstadoNotificacion.Fallida));
+    }
+
     public async Task<AdjuntoDto> AgregarAdjuntoAsync(int id, string nombreArchivo, string? contentType, Stream contenido, int usuarioId, CancellationToken ct = default)
     {
         if (!await db.InstanciasDocumento.AnyAsync(i => i.Id == id, ct))

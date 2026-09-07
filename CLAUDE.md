@@ -280,6 +280,14 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
   `authGuard`, ver `app.routes.ts`), usa un `HttpContextToken` (`TOKEN_CORREO` en
   `auth.interceptor.ts`) para que el interceptor use el token del link en vez de (o aunque exista)
   una sesión logueada en el mismo navegador.
+- **"Reenviar notificación" (2026-09-07) — construido.** Botón/endpoint (`POST
+  /api/documentos/{id}/reenviar-notificacion`) para disparar de nuevo, a demanda, la notificación
+  del paso actual sin tocar el documento — para cuando el envío automático de `Crear`/`EjecutarAccion`
+  falló (SMTP/DNS caído, etc.) o para controlar el momento exacto del envío. Solo lo puede pedir
+  quien emitió el documento (mismo chequeo que `ReenviarAsync`). A diferencia del envío automático
+  (que nunca rompe la acción que lo disparó, ver `NotificarSinRomperAsync`), acá **si importa que
+  quien lo pidió se entere** — devuelve `{ enviadas, fallidas }` leyendo las filas de `Notificacion`
+  recién creadas, en vez de tragarse el resultado en silencio.
 - **Visual flow designer.** Out of scope for V1 on purpose — flows are configured via
   CRUD-style admin screens (create role, create step, assign roles/actions per step), not a
   drag-and-drop designer. The data model already supports one being added later as a pure UI layer.

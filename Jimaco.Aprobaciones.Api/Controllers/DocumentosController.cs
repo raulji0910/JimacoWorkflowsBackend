@@ -41,6 +41,15 @@ public class DocumentosController(IInstanciaDocumentoService instanciaService, I
     public async Task<ActionResult<InstanciaDocumentoDetalleDto>> Reenviar(int id, CancellationToken ct) =>
         Ok(await instanciaService.ReenviarAsync(id, UsuarioActualId, ct));
 
+    /// <summary>
+    /// Dispara de nuevo, a demanda, la notificación del paso actual — sin cambiar el documento.
+    /// Para cuando el envío automático de la creación/acción falló, o para controlar el momento
+    /// exacto del envío. Solo quien emitió el documento puede pedirlo.
+    /// </summary>
+    [HttpPost("{id:int}/reenviar-notificacion")]
+    public async Task<ActionResult<ReenvioNotificacionResultadoDto>> ReenviarNotificacion(int id, CancellationToken ct) =>
+        Ok(await instanciaService.ReenviarNotificacionAsync(id, UsuarioActualId, ct));
+
     [HttpPost("{id:int}/adjuntos")]
     [RequestSizeLimit(20_000_000)]
     public async Task<ActionResult<AdjuntoDto>> SubirAdjunto(int id, IFormFile archivo, CancellationToken ct)
