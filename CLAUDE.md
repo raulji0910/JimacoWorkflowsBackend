@@ -223,12 +223,26 @@ right after this deploy, down from ~1.2GB with just the other two apps running).
 the other two don't have a cap set, so if things get slow across all three apps under real load,
 upgrading the Lightsail plan is the fix, not something to solve with more config here.
 
-**Redeploy after pushing changes:**
+**Redeploy after pushing changes — NEVER `--build` on the server (2026-09-08).** That server is a
+2vCPU/4GB Lightsail box already running Jimaco Cotizaciones + Ferrealiados live — building
+.NET+Angular inside Docker *there* once starved it of RAM badly enough that the whole instance
+OOM'd and rebooted (all three apps' containers restarted at once). Build locally, ship the image:
 ```bash
+# Local (build once for both, or split if only one changed):
+docker compose build api web
+docker save jimacoaprobaciones-api:latest jimacoaprobaciones-web:latest | gzip > /tmp/aprobaciones-images.tar.gz
+scp -i LightsailDefaultKey-sa-east-1.pem /tmp/aprobaciones-images.tar.gz ubuntu@54.232.227.230:/tmp/
+
+# Server: pull code (for docker-compose.yml/CLAUDE.md/etc — the image itself doesn't need it),
+# load the image, then start WITHOUT --build:
 ssh -i LightsailDefaultKey-sa-east-1.pem ubuntu@54.232.227.230
 cd /opt/jimaco/Jimaco.Aprobaciones && git pull
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker load -i /tmp/aprobaciones-images.tar.gz && rm /tmp/aprobaciones-images.tar.gz
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
+This likely applies to Jimaco Cotizaciones and Ferrealiados too (their own `CLAUDE.md`s still
+document the old `--build`-on-server pattern that caused this) — worth fixing there too next time
+either gets redeployed.
 
 **Still pending on the server** (not blocking, but real gaps — don't assume these are done):
 - `SMTP_PASSWORD` in the server's `.env` is still the placeholder — email notifications will fail
