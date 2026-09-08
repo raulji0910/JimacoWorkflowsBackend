@@ -280,6 +280,20 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
   `authGuard`, ver `app.routes.ts`), usa un `HttpContextToken` (`TOKEN_CORREO` en
   `auth.interceptor.ts`) para que el interceptor use el token del link en vez de (o aunque exista)
   una sesión logueada en el mismo navegador.
+- **`SMTP_HOST` real (2026-09-08) — no es `mail.jimaco.com.co`.** Ese hostname (el que cPanel
+  recomienda en "Connect Devices" para `sistemas@jimaco.com.co`) **no tiene registro DNS** — nunca
+  se creó el subdominio `mail` en la zona DNS real de `jimaco.com.co` (el MX del dominio apunta a
+  Microsoft 365/Outlook, `jimaco-com-co.mail.protection.outlook.com`, pero el buzón en sí vive en
+  cPanel/ColombiaHosting — dos cosas separadas). El host real que sí funciona (mismo servidor,
+  detectado por PTR de la IP y confirmado enviando un correo real) es
+  **`s3452.mex1.stableserver.net`** — el certificado SSL del servidor está a nombre de eso (y de
+  `*.bom1.mysecurecloudhost.com`/`*.bom1.stableserver.net`/`*.bom1.whgi.net`), no de
+  `mail.jimaco.com.co`, por eso conectar con ese hostname tira `SslHandshakeException` (nombre no
+  coincide) — y antes de eso, directamente `SocketException` (NXDOMAIN) porque el hostname ni
+  resuelve. **`Smtp:Host` local (`.env`) y de producción deben usar `s3452.mex1.stableserver.net`**,
+  no `mail.jimaco.com.co`. Esto podría cambiar si algún día alguien agrega el registro DNS faltante
+  del lado de Jimaco — si vuelve a fallar con `SocketException`/`SslHandshakeException`, repetir
+  este diagnóstico (PTR de la IP del dominio) en vez de asumir que es igual que antes.
 - **"Reenviar notificación" (2026-09-07) — construido.** Botón/endpoint (`POST
   /api/documentos/{id}/reenviar-notificacion`) para disparar de nuevo, a demanda, la notificación
   del paso actual sin tocar el documento — para cuando el envío automático de `Crear`/`EjecutarAccion`
