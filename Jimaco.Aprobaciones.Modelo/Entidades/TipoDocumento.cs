@@ -26,6 +26,17 @@ public class TipoDocumento
     [MaxLength(300)]
     public string? Descripcion { get; set; }
 
+    /// <summary>
+    /// El <c>prefijo</c> que usa World Office para este tipo de documento en
+    /// <c>[CuentasContables - Asientos]</c> (ej. "OC") — obligatorio, porque dos tipos de
+    /// documento con prefijos distintos son documentos distintos aunque se llamen parecido (ej.
+    /// una OC real de prefijo "OC" no es lo mismo que una OC de pruebas con su propio prefijo).
+    /// El Sincronizador usa este campo para saber qué prefijo de WO corresponde a qué
+    /// TipoDocumento acá — no hay ningún prefijo hardcodeado en el código del Sincronizador.
+    /// </summary>
+    [MaxLength(20)]
+    public required string PrefijoWorldOffice { get; set; }
+
     public bool Activo { get; set; } = true;
 
     public ICollection<CampoTipoDocumento> Campos { get; set; } = [];

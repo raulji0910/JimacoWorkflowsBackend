@@ -39,7 +39,7 @@ public class InstanciaDocumentoServiceTests
             new UsuarioRol { UsuarioId = comercial.Id, RolId = rolComercial.Id },
             new UsuarioRol { UsuarioId = contable.Id, RolId = rolContable.Id });
 
-        var tipo = new TipoDocumento { Nombre = "Orden de Compra", Activo = true };
+        var tipo = new TipoDocumento { Nombre = "Orden de Compra", PrefijoWorldOffice = "OC", Activo = true };
         db.TiposDocumento.Add(tipo);
         await db.SaveChangesAsync();
 

@@ -37,6 +37,19 @@ public class JimacoAprobacionesClient(HttpClient http, string email, string pass
         return (await response.Content.ReadFromJsonAsync<InstanciaDocumentoDetalleDto>(JsonOpciones, ct))!;
     }
 
+    public async Task<IReadOnlyList<TipoDocumentoDto>> ListarTiposDocumentoAsync(CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/tiposdocumento");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+
+        return (await response.Content.ReadFromJsonAsync<IReadOnlyList<TipoDocumentoDto>>(JsonOpciones, ct))!;
+    }
+
     public async Task<IReadOnlyList<PendienteEscrituraWODto>> ListarPendientesEscrituraWOAsync(CancellationToken ct = default)
     {
         await AsegurarTokenAsync(ct);

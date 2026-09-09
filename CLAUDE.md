@@ -143,11 +143,14 @@ minutes, not a long-running service — see `Program.cs`, it runs one pass and e
 1. Reads the last processed `IdAsientoContable` from a local JSON file (`WatermarkStore` —
    `Sincronizador:RutaMarcaDeAgua` in config, defaults to `marca-de-agua.json` next to the exe).
 2. Queries `[CuentasContables - Asientos]` (World Office's generic all-document-types table —
-   see `esquema-worldoffice-oc.md`) for rows with `prefijo = 'OC'`, `senAnulado = 0`, and
-   `IdAsientoContable` past the watermark — via `WorldOfficeReader`, using the read-only
-   `wf_readonly` SQL login. This reading side never writes anything — see "Escritura de vuelta a
-   World Office" below for the one place this project *does* write, which is a separate class with
-   its own separate (write-capable) login, not this one.
+   see `esquema-worldoffice-oc.md`) for rows whose `prefijo` matches **any** `TipoDocumento` that
+   has `PrefijoWorldOffice` configured (2026-09-09 — used to be hardcoded to `prefijo = 'OC'`, now
+   fetched from `GET /api/tiposdocumento` at the start of each run, so adding a new synced document
+   type is a pure admin-screen change, not a code change — see "Prefijo de World Office por tipo de
+   documento" below), `senAnulado = 0`, and `IdAsientoContable` past the watermark — via
+   `WorldOfficeReader`, using the read-only `wf_readonly` SQL login. This reading side never writes
+   anything — see "Escritura de vuelta a World Office" below for the one place this project *does*
+   write, which is a separate class with its own separate (write-capable) login, not this one.
 3. For each new OC: resolves the proveedor and "elaborado por" (both are `Terceros` rows, joined
    by `IdTerceroExterno`/`IdTerceroInterno` respectively — `Terceros.NombreCompleto` handles the
    company-vs-person name shape), and sums `CCA_M_Inventarios.TotalRenglon` for the line-item
@@ -171,11 +174,11 @@ publicly-trusted cert), `Jimaco:ApiBaseUrl` (now that production exists —
 installing this on a machine in World Office's network), `Jimaco:UsuarioServicio:Email`/`Password`
 (a normal `Usuario` row, created from the Usuarios admin screen like any other — no roles needed,
 it never approves anything, only creates — remember this has to be created against *whichever*
-environment's database `ApiBaseUrl` points at), `Jimaco:TipoDocumentoOrdenCompraId` (the numeric id
-of the "Orden de Compra" `TipoDocumento` in *this* environment's database — differs between
-local/prod; **seeded in prod as of 2026-09-08** — id `1` there, same as local, but don't assume
-that stays true forever, verify if this ever looks wrong), and `WorldOffice:ConnectionStringEscritura`
-(optional — see "Escritura de vuelta a World Office" below).
+environment's database `ApiBaseUrl` points at). No `TipoDocumentoOrdenCompraId` config anymore
+(removed 2026-09-09) — which `TipoDocumento` each World Office prefix maps to now comes from
+`GET /api/tiposdocumento` at runtime, see "Prefijo de World Office por tipo de documento" below.
+`WorldOffice:ConnectionStringEscritura` is optional — see "Escritura de vuelta a World Office"
+below.
 
 **Deploying it** (this runs on a machine that is not a dev box and may not have the .NET runtime):
 ```bash
@@ -195,6 +198,26 @@ SSMS against the real World Office database (see `esquema-worldoffice-oc.md`) bu
 itself has **not** been run end-to-end against that database yet — this dev machine can't reach
 it, only a machine on that LAN can. Don't claim this has been fully tested until someone runs it
 from inside that network.
+
+## Prefijo de World Office por tipo de documento (2026-09-09)
+
+`TipoDocumento.PrefijoWorldOffice` (string, **obligatorio** a nivel de DTO/formulario, columna
+nullable a nivel de DB por simplicidad de migración) — el prefijo exacto de WO
+(`[CuentasContables - Asientos].prefijo`) que corresponde a ese tipo de documento acá. Motivado por
+el usuario: una OC real (`prefijo='OC'`) y una OC de pruebas con su propio prefijo en WO son
+documentos distintos aunque se llamen parecido — antes de esto, el Sincronizador tenía `'OC'`
+hardcodeado en el SQL y un `TipoDocumentoOrdenCompraId` fijo en su config; ahora consulta
+`GET /api/tiposdocumento`, arma un diccionario prefijo→TipoDocumentoId con los que tengan
+`PrefijoWorldOffice` seteado y estén `Activo`, y consulta WO por todos esos prefijos en un solo
+`WHERE prefijo IN (...)`. **Validación de unicidad**: `TipoDocumentoService` rechaza crear/editar
+un tipo con un prefijo que ya use otro (ambiguo para el Sincronizador, no sabría a cuál de los dos
+crear el documento). Migración `AgregarPrefijoWorldOffice` — la fila existente ("Orden de Compra")
+quedó con `'OC'` de respaldo, que es su valor real, no un placeholder al azar.
+
+**Ojo con la marca de agua al agregar un prefijo nuevo más adelante**: es global (un solo
+`IdAsientoContable` "hasta acá ya se revisó"), así que documentos viejos de un prefijo recién
+agregado, anteriores a la marca actual, no se traen solos — hace falta un backfill puntual la
+primera vez (bajar la marca de agua a mano, o un query aparte para ese prefijo).
 
 ## Escritura de vuelta a World Office (2026-09-09) — la ÚNICA escritura automática a WO de todo este proyecto
 

@@ -27,10 +27,16 @@ public class TipoDocumentoService(AppDbContext db) : ITipoDocumentoService
         if (await db.TiposDocumento.AnyAsync(t => t.Nombre == dto.Nombre, ct))
             throw new InvalidOperationException($"Ya existe un tipo de documento llamado \"{dto.Nombre}\".");
 
+        // Dos tipos de documento con el mismo prefijo de WO serían ambiguos para el
+        // Sincronizador — no sabría a cuál de los dos crear el documento sincronizado.
+        if (await db.TiposDocumento.AnyAsync(t => t.PrefijoWorldOffice == dto.PrefijoWorldOffice, ct))
+            throw new InvalidOperationException($"Ya hay un tipo de documento usando el prefijo de World Office \"{dto.PrefijoWorldOffice}\".");
+
         var tipo = new TipoDocumento
         {
             Nombre = dto.Nombre,
             Descripcion = dto.Descripcion,
+            PrefijoWorldOffice = dto.PrefijoWorldOffice,
             Activo = true,
             Campos = dto.Campos.Select(MapearCampo).ToList()
         };
@@ -49,8 +55,12 @@ public class TipoDocumentoService(AppDbContext db) : ITipoDocumentoService
         if (await db.TiposDocumento.AnyAsync(t => t.Id != id && t.Nombre == dto.Nombre, ct))
             throw new InvalidOperationException($"Ya existe un tipo de documento llamado \"{dto.Nombre}\".");
 
+        if (await db.TiposDocumento.AnyAsync(t => t.Id != id && t.PrefijoWorldOffice == dto.PrefijoWorldOffice, ct))
+            throw new InvalidOperationException($"Ya hay un tipo de documento usando el prefijo de World Office \"{dto.PrefijoWorldOffice}\".");
+
         tipo.Nombre = dto.Nombre;
         tipo.Descripcion = dto.Descripcion;
+        tipo.PrefijoWorldOffice = dto.PrefijoWorldOffice;
         tipo.Activo = dto.Activo;
 
         db.CamposTipoDocumento.RemoveRange(tipo.Campos);
@@ -72,7 +82,7 @@ public class TipoDocumentoService(AppDbContext db) : ITipoDocumentoService
     };
 
     private static TipoDocumentoDto MapearDto(TipoDocumento t) => new(
-        t.Id, t.Nombre, t.Descripcion, t.Activo,
+        t.Id, t.Nombre, t.Descripcion, t.PrefijoWorldOffice, t.Activo,
         t.Campos.OrderBy(c => c.Orden).Select(c => new CampoTipoDocumentoDto(
             c.Id, c.Nombre, c.Etiqueta, c.TipoCampo, c.Requerido, c.Orden,
             c.OpcionesJson is null ? null : JsonSerializer.Deserialize<List<string>>(c.OpcionesJson))).ToList());

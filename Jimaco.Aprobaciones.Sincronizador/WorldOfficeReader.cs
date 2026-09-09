@@ -13,8 +13,16 @@ namespace Jimaco.Aprobaciones.Sincronizador;
 /// </summary>
 public class WorldOfficeReader(string connectionString)
 {
-    public async Task<IReadOnlyList<OcHeaderRow>> ObtenerOcNuevasAsync(int marcaDeAgua, CancellationToken ct = default)
+    /// <summary>
+    /// Documentos nuevos con cualquiera de los <paramref name="prefijos"/> configurados (uno por
+    /// cada <c>TipoDocumento</c> con <c>PrefijoWorldOffice</c> seteado en Jimaco Aprobaciones — ver
+    /// <see cref="JimacoAprobacionesClient.ListarTiposDocumentoAsync"/>). Nada hardcodeado a "OC":
+    /// el llamador decide qué prefijos importan según la configuración real, no este método.
+    /// </summary>
+    public async Task<IReadOnlyList<OcHeaderRow>> ObtenerDocumentosNuevosAsync(int marcaDeAgua, IReadOnlyList<string> prefijos, CancellationToken ct = default)
     {
+        if (prefijos.Count == 0) return [];
+
         const string sql = """
             SELECT
                 IdAsientoContable,
@@ -27,14 +35,14 @@ public class WorldOfficeReader(string connectionString)
                 Nota,
                 IdFormaDePago
             FROM [CuentasContables - Asientos]
-            WHERE prefijo = 'OC'
+            WHERE prefijo IN @Prefijos
               AND IdAsientoContable > @Marca
               AND (senAnulado = 0 OR senAnulado IS NULL)
             ORDER BY IdAsientoContable;
             """;
 
         await using var conexion = new SqlConnection(connectionString);
-        var comando = new CommandDefinition(sql, new { Marca = marcaDeAgua }, cancellationToken: ct);
+        var comando = new CommandDefinition(sql, new { Marca = marcaDeAgua, Prefijos = prefijos }, cancellationToken: ct);
         var filas = await conexion.QueryAsync<OcHeaderRow>(comando);
         return filas.ToList();
     }
