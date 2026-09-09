@@ -64,7 +64,9 @@ public class InstanciaDocumentoService(
             DatosJson = dto.Datos is { Count: > 0 } ? JsonSerializer.Serialize(dto.Datos) : null,
             CreadoPorUsuarioId = usuarioId,
             FechaCreacion = ahora,
-            Renglones = renglones
+            Renglones = renglones,
+            IdAsientoContableOrigen = dto.IdAsientoContableOrigen,
+            PrefijoOrigen = dto.PrefijoOrigen
         };
         db.InstanciasDocumento.Add(instancia);
         db.HistorialAcciones.Add(new HistorialAccion
@@ -151,6 +153,14 @@ public class InstanciaDocumentoService(
                 {
                     instancia.PasoActualId = siguiente.Id;
                 }
+
+                // Se aprobó el primer paso de CUALQUIER flujo (genérico, no específico de OC) —
+                // si el documento vino sincronizado desde World Office, queda pendiente de
+                // reflejar esa aprobación allá. No se revierte si un paso posterior rechaza o
+                // devuelve el documento — la aprobación de este primer paso ya fue real.
+                if (paso.Orden == 1 && instancia.IdAsientoContableOrigen is not null)
+                    instancia.PendienteEscrituraWO = true;
+
                 break;
 
             case TipoAccion.Devuelto:
@@ -290,6 +300,53 @@ public class InstanciaDocumentoService(
             nuevas.Count(n => n.Estado == EstadoNotificacion.Fallida));
     }
 
+    public async Task<IReadOnlyList<PendienteEscrituraWODto>> ListarPendientesEscrituraWOAsync(CancellationToken ct = default)
+    {
+        var pendientes = await db.InstanciasDocumento
+            .Include(i => i.Historial).ThenInclude(h => h.PasoFlujo)
+            .Include(i => i.Historial).ThenInclude(h => h.Usuario)
+            .Where(i => i.PendienteEscrituraWO && i.IdAsientoContableOrigen != null && i.PrefijoOrigen != null)
+            .ToListAsync(ct);
+
+        return pendientes.Select(i =>
+        {
+            // El usuario a escribir en WO es quien aprobó el primer paso (Orden 1) acá — no
+            // necesariamente quien creó el documento (ese fue el Sincronizador).
+            var aprobacionPrimerPaso = i.Historial
+                .Where(h => h.Accion == TipoAccion.Aprobado && h.PasoFlujo?.Orden == 1)
+                .MaxBy(h => h.Fecha);
+
+            var usuarioWO = aprobacionPrimerPaso?.Usuario.UsuarioWO;
+            if (string.IsNullOrWhiteSpace(usuarioWO))
+                usuarioWO = "JIMACO APROBACIONES"; // respaldo si esa persona no tiene usuario de WO configurado
+
+            return new PendienteEscrituraWODto(i.Id, i.IdAsientoContableOrigen!.Value, i.PrefijoOrigen!, i.NumeroReferencia, usuarioWO);
+        }).ToList();
+    }
+
+    public async Task ConfirmarEscrituraWOAsync(int instanciaDocumentoId, CancellationToken ct = default)
+    {
+        var instancia = await db.InstanciasDocumento.FirstOrDefaultAsync(i => i.Id == instanciaDocumentoId, ct)
+            ?? throw new KeyNotFoundException("Documento no encontrado.");
+
+        instancia.PendienteEscrituraWO = false;
+        instancia.ConflictoWO = null;
+        instancia.FechaEscrituraWO = timeProvider.GetUtcNow().UtcDateTime;
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task ReportarConflictoWOAsync(int instanciaDocumentoId, string mensaje, CancellationToken ct = default)
+    {
+        var instancia = await db.InstanciasDocumento.FirstOrDefaultAsync(i => i.Id == instanciaDocumentoId, ct)
+            ?? throw new KeyNotFoundException("Documento no encontrado.");
+
+        // Se saca de la cola a propósito (no reintentar indefinidamente algo que ya sabemos que
+        // va a volver a chocar) — queda visible en el detalle del documento vía ConflictoWO.
+        instancia.PendienteEscrituraWO = false;
+        instancia.ConflictoWO = mensaje;
+        await db.SaveChangesAsync(ct);
+    }
+
     public async Task<AdjuntoDto> AgregarAdjuntoAsync(int id, string nombreArchivo, string? contentType, Stream contenido, int usuarioId, CancellationToken ct = default)
     {
         if (!await db.InstanciasDocumento.AnyAsync(i => i.Id == id, ct))
@@ -378,5 +435,6 @@ public class InstanciaDocumentoService(
         i.Historial.OrderBy(h => h.Fecha).Select(h => new HistorialAccionDto(
             h.Id, h.PasoFlujo?.Nombre, h.Usuario.Nombre, h.Accion, h.Comentario, h.Fecha)).ToList(),
         i.Renglones.OrderBy(r => r.Orden).Select(r => new RenglonDto(
-            r.Id, r.Codigo, r.Descripcion, r.Cantidad, r.UnidadMedida, r.ValorUnitario, r.PorcentajeIva, r.Total)).ToList());
+            r.Id, r.Codigo, r.Descripcion, r.Cantidad, r.UnidadMedida, r.ValorUnitario, r.PorcentajeIva, r.Total)).ToList(),
+        i.IdAsientoContableOrigen, i.PrefijoOrigen, i.PendienteEscrituraWO, i.ConflictoWO, i.FechaEscrituraWO);
 }

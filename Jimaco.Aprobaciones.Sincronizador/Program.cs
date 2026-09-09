@@ -61,7 +61,9 @@ foreach (var oc in ocNuevas)
             Proveedor: proveedor?.NombreCompleto,
             Valor: valorTotal,
             FechaDocumento: oc.Fecha,
-            Datos: datos.Count > 0 ? datos : null);
+            Datos: datos.Count > 0 ? datos : null,
+            IdAsientoContableOrigen: oc.IdAsientoContable,
+            PrefijoOrigen: oc.Prefijo);
 
         var creado = await jimaco.CrearDocumentoAsync(dto);
         Console.WriteLine($"[{DateTime.Now:s}]   OC {dto.NumeroReferencia} -> creada como documento #{creado.Id} ({proveedor?.NombreCompleto ?? "proveedor desconocido"}, ${valorTotal:N0})");
@@ -76,6 +78,60 @@ foreach (var oc in ocNuevas)
         Console.Error.WriteLine("Deteniendo el lote acá — la próxima corrida reintenta desde este mismo punto.");
         Environment.ExitCode = 1;
         break;
+    }
+}
+
+// ---- Fase 2: escribir de vuelta en World Office las aprobaciones del primer paso ----
+// Opt-in a propósito: si no está configurada la connection string de escritura, se omite esta
+// fase entera (permite seguir usando el Sincronizador solo para lectura hasta que WO tenga
+// listo un login con permiso de escritura — ver exploracion-worldoffice.sql).
+var connectionStringEscritura = config["WorldOffice:ConnectionStringEscritura"];
+if (string.IsNullOrWhiteSpace(connectionStringEscritura))
+{
+    Console.WriteLine($"[{DateTime.Now:s}] WorldOffice:ConnectionStringEscritura no configurado — se omite la escritura de vuelta a WO.");
+}
+else
+{
+    var escritor = new WorldOfficeWriter(connectionStringEscritura);
+
+    Console.WriteLine($"[{DateTime.Now:s}] Revisando aprobaciones pendientes de reflejar en World Office...");
+    var pendientes = await jimaco.ListarPendientesEscrituraWOAsync();
+    Console.WriteLine($"[{DateTime.Now:s}] {pendientes.Count} documento(s) pendiente(s) de escribir en WO.");
+
+    foreach (var p in pendientes)
+    {
+        try
+        {
+            var resultado = await escritor.AprobarPrimerPasoAsync(p.PrefijoOrigen, p.IdAsientoContableOrigen, p.UsuarioWO);
+
+            switch (resultado)
+            {
+                case ResultadoEscrituraWO.Escrito:
+                case ResultadoEscrituraWO.YaEstabaAprobado:
+                    await jimaco.ConfirmarEscrituraWOAsync(p.InstanciaDocumentoId);
+                    Console.WriteLine($"[{DateTime.Now:s}]   Documento #{p.InstanciaDocumentoId} ({p.NumeroReferencia}) -> {resultado} en WO.");
+                    break;
+
+                case ResultadoEscrituraWO.Anulado:
+                    await jimaco.ReportarConflictoWOAsync(p.InstanciaDocumentoId,
+                        "El documento ya estaba anulado en World Office al momento de sincronizar la aprobación.");
+                    Console.WriteLine($"[{DateTime.Now:s}]   Documento #{p.InstanciaDocumentoId} -> CONFLICTO: anulado en WO, no se escribió nada.");
+                    break;
+
+                case ResultadoEscrituraWO.NoEncontrado:
+                    await jimaco.ReportarConflictoWOAsync(p.InstanciaDocumentoId,
+                        $"No se encontró en World Office la fila prefijo={p.PrefijoOrigen} IdAsientoContable={p.IdAsientoContableOrigen}.");
+                    Console.WriteLine($"[{DateTime.Now:s}]   Documento #{p.InstanciaDocumentoId} -> CONFLICTO: no encontrado en WO.");
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            // A diferencia del lote de OC nuevas (que se detiene entero ante un error), acá cada
+            // documento pendiente es independiente — uno que falla no bloquea a los demás, y
+            // sigue en la cola para que la próxima corrida lo reintente solo.
+            Console.Error.WriteLine($"[{DateTime.Now:s}]   ERROR escribiendo en WO el documento #{p.InstanciaDocumentoId}: {ex.Message}");
+        }
     }
 }
 

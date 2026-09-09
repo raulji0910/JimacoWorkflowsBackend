@@ -27,7 +27,12 @@ public class DocumentoPdfGeneradorTests
             FechaCreacion: new DateTime(2026, 9, 3, 10, 0, 0),
             Adjuntos: [],
             Historial: [new HistorialAccionDto(1, null, "Administrador", TipoAccion.Creado, null, new DateTime(2026, 9, 3, 10, 0, 0))],
-            Renglones: [new RenglonDto(1, "PJ-27671", "SOPLADORA INALAMBRICA 20V", 2, "Und.", 242100m, 0.19m, 484200m)]);
+            Renglones: [new RenglonDto(1, "PJ-27671", "SOPLADORA INALAMBRICA 20V", 2, "Und.", 242100m, 0.19m, 484200m)],
+            IdAsientoContableOrigen: null,
+            PrefijoOrigen: null,
+            PendienteEscrituraWO: false,
+            ConflictoWO: null,
+            FechaEscrituraWO: null);
 
         var pdf = new DocumentoPdfGenerador().Generar(documento);
 
@@ -55,7 +60,12 @@ public class DocumentoPdfGeneradorTests
             FechaCreacion: new DateTime(2026, 9, 3),
             Adjuntos: [],
             Historial: [],
-            Renglones: []);
+            Renglones: [],
+            IdAsientoContableOrigen: null,
+            PrefijoOrigen: null,
+            PendienteEscrituraWO: false,
+            ConflictoWO: null,
+            FechaEscrituraWO: null);
 
         var pdf = new DocumentoPdfGenerador().Generar(documento);
 

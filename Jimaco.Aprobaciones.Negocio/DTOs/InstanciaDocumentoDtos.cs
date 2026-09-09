@@ -27,7 +27,12 @@ public record CrearInstanciaDocumentoDto(
     decimal? Valor,
     DateTime? FechaDocumento,
     Dictionary<string, string>? Datos,
-    IReadOnlyList<RenglonInputDto>? Renglones = null);
+    IReadOnlyList<RenglonInputDto>? Renglones = null,
+    // Origen en World Office (Fase 2) — null en documentos creados a mano. Van juntos: el prefijo
+    // solo no identifica la fila (un mismo IdAsientoContable siempre es único, pero se guarda el
+    // prefijo también como chequeo de seguridad al escribir la aprobación de vuelta en WO).
+    int? IdAsientoContableOrigen = null,
+    string? PrefijoOrigen = null);
 
 public record HistorialAccionDto(int Id, string? PasoNombre, string UsuarioNombre, TipoAccion Accion, string? Comentario, DateTime Fecha);
 
@@ -61,8 +66,25 @@ public record InstanciaDocumentoDetalleDto(
     DateTime FechaCreacion,
     IReadOnlyList<AdjuntoDto> Adjuntos,
     IReadOnlyList<HistorialAccionDto> Historial,
-    IReadOnlyList<RenglonDto> Renglones);
+    IReadOnlyList<RenglonDto> Renglones,
+    int? IdAsientoContableOrigen,
+    string? PrefijoOrigen,
+    bool PendienteEscrituraWO,
+    string? ConflictoWO,
+    DateTime? FechaEscrituraWO);
 
 public record EjecutarAccionDto(TipoAccion Accion, string? Comentario);
 
 public record ReenvioNotificacionResultadoDto(int Enviadas, int Fallidas);
+
+// ---- Sincronización de aprobación de vuelta a World Office (Fase 2) ----
+
+/// <summary>Un documento cuyo primer paso ya se aprobó acá y falta reflejarlo en WO.</summary>
+public record PendienteEscrituraWODto(
+    int InstanciaDocumentoId,
+    int IdAsientoContableOrigen,
+    string PrefijoOrigen,
+    string? NumeroReferencia,
+    string UsuarioWO);
+
+public record ReportarConflictoWODto(string Mensaje);

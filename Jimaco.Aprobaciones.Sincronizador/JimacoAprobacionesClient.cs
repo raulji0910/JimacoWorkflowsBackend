@@ -37,6 +37,44 @@ public class JimacoAprobacionesClient(HttpClient http, string email, string pass
         return (await response.Content.ReadFromJsonAsync<InstanciaDocumentoDetalleDto>(JsonOpciones, ct))!;
     }
 
+    public async Task<IReadOnlyList<PendienteEscrituraWODto>> ListarPendientesEscrituraWOAsync(CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/sincronizacion/pendientes-wo");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+
+        return (await response.Content.ReadFromJsonAsync<IReadOnlyList<PendienteEscrituraWODto>>(JsonOpciones, ct))!;
+    }
+
+    public async Task ConfirmarEscrituraWOAsync(int instanciaDocumentoId, CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"api/sincronizacion/pendientes-wo/{instanciaDocumentoId}/confirmar");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+    }
+
+    public async Task ReportarConflictoWOAsync(int instanciaDocumentoId, string mensaje, CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"api/sincronizacion/pendientes-wo/{instanciaDocumentoId}/conflicto")
+        {
+            Content = JsonContent.Create(new ReportarConflictoWODto(mensaje), options: JsonOpciones)
+        };
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+    }
+
     private async Task AsegurarTokenAsync(CancellationToken ct)
     {
         // Un margen de 1 minuto antes de que expire, para no arrancar una petición con un token

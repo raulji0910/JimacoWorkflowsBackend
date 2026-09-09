@@ -29,6 +29,18 @@ public interface IInstanciaDocumentoService
     /// </summary>
     Task<ReenvioNotificacionResultadoDto> ReenviarNotificacionAsync(int id, int usuarioId, CancellationToken ct = default);
 
+    // ---- Sincronización de aprobación de vuelta a World Office (Fase 2) — usado por
+    // Jimaco.Aprobaciones.Sincronizador, no por la UI. ----
+
+    /// <summary>Documentos cuyo primer paso ya se aprobó acá y todavía no se confirmó que se escribió en WO.</summary>
+    Task<IReadOnlyList<PendienteEscrituraWODto>> ListarPendientesEscrituraWOAsync(CancellationToken ct = default);
+
+    /// <summary>El Sincronizador confirma que ya escribió la aprobación en WO — saca el documento de la cola.</summary>
+    Task ConfirmarEscrituraWOAsync(int instanciaDocumentoId, CancellationToken ct = default);
+
+    /// <summary>El Sincronizador encontró un conflicto en WO (ej. la fila ya estaba anulada) — no reintentar, dejarlo visible.</summary>
+    Task ReportarConflictoWOAsync(int instanciaDocumentoId, string mensaje, CancellationToken ct = default);
+
     Task<AdjuntoDto> AgregarAdjuntoAsync(int id, string nombreArchivo, string? contentType, Stream contenido, int usuarioId, CancellationToken ct = default);
 
     Task<(Stream Contenido, string NombreArchivo, string? ContentType)> DescargarAdjuntoAsync(int adjuntoId, CancellationToken ct = default);

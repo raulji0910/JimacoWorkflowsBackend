@@ -145,7 +145,9 @@ minutes, not a long-running service — see `Program.cs`, it runs one pass and e
 2. Queries `[CuentasContables - Asientos]` (World Office's generic all-document-types table —
    see `esquema-worldoffice-oc.md`) for rows with `prefijo = 'OC'`, `senAnulado = 0`, and
    `IdAsientoContable` past the watermark — via `WorldOfficeReader`, using the read-only
-   `wf_readonly` SQL login. **Nothing in this project ever writes to World Office.**
+   `wf_readonly` SQL login. This reading side never writes anything — see "Escritura de vuelta a
+   World Office" below for the one place this project *does* write, which is a separate class with
+   its own separate (write-capable) login, not this one.
 3. For each new OC: resolves the proveedor and "elaborado por" (both are `Terceros` rows, joined
    by `IdTerceroExterno`/`IdTerceroInterno` respectively — `Terceros.NombreCompleto` handles the
    company-vs-person name shape), and sums `CCA_M_Inventarios.TotalRenglon` for the line-item
@@ -171,9 +173,9 @@ installing this on a machine in World Office's network), `Jimaco:UsuarioServicio
 it never approves anything, only creates — remember this has to be created against *whichever*
 environment's database `ApiBaseUrl` points at), `Jimaco:TipoDocumentoOrdenCompraId` (the numeric id
 of the "Orden de Compra" `TipoDocumento` in *this* environment's database — differs between
-local/prod, and **doesn't exist yet in prod** — the prod database is freshly seeded with just the
-admin user, nobody has created the "Orden de Compra" `TipoDocumento`/`DefinicionFlujo`/roles there
-yet, that's a real prerequisite before the Sincronizador can create anything in production).
+local/prod; **seeded in prod as of 2026-09-08** — id `1` there, same as local, but don't assume
+that stays true forever, verify if this ever looks wrong), and `WorldOffice:ConnectionStringEscritura`
+(optional — see "Escritura de vuelta a World Office" below).
 
 **Deploying it** (this runs on a machine that is not a dev box and may not have the .NET runtime):
 ```bash
@@ -193,6 +195,60 @@ SSMS against the real World Office database (see `esquema-worldoffice-oc.md`) bu
 itself has **not** been run end-to-end against that database yet — this dev machine can't reach
 it, only a machine on that LAN can. Don't claim this has been fully tested until someone runs it
 from inside that network.
+
+## Escritura de vuelta a World Office (2026-09-09) — la ÚNICA escritura automática a WO de todo este proyecto
+
+Hasta acá, todo lo que este proyecto hacía contra World Office era de solo lectura — regla
+explícita, repetida varias veces. Esto la rompe a propósito, por pedido directo del usuario:
+**cuando se aprueba el primer paso (`Orden == 1`) de CUALQUIER flujo** (genérico, no específico de
+"Orden de Compra" — el mecanismo de WO es el mismo para todos los prefijos, ver
+`esquema-worldoffice-oc.md` y la limpieza masiva que se hizo en memoria `project_jimaco_workflow_documentos`),
+**si el documento tiene un origen de WO guardado, se marca como "pendiente de escribir en WO"** y
+el Sincronizador la refleja allá en su próxima corrida.
+
+**Piezas nuevas:**
+- `InstanciaDocumento.IdAsientoContableOrigen`/`PrefijoOrigen` — el `IdAsientoContable` (PK real en
+  WO) + `prefijo` de la fila de origen. Null en documentos creados a mano; el Sincronizador los pasa
+  al crear (`CrearInstanciaDocumentoDto`). Se guardan los dos juntos a propósito — el `prefijo` es
+  un chequeo de seguridad extra al escribir (nunca alcanza con el Id solo como excusa para no
+  validar nada más).
+- `InstanciaDocumento.PendienteEscrituraWO` (bool) — se prende en `InstanciaDocumentoService.EjecutarAccionAsync`,
+  caso `Aprobado`, cuando `paso.Orden == 1 && IdAsientoContableOrigen != null`. **No se revierte**
+  si un paso posterior rechaza/devuelve el documento (decisión explícita del usuario — esa
+  aprobación comercial ya fue real, lo que pase después es control interno nuestro).
+- `Usuario.UsuarioWO` (string, nullable) — el usuario de World Office de esa persona (campo nuevo
+  en el form de Usuarios). Se usa como `IdTerceroAprobador` al escribir — así queda a nombre del
+  usuario real de WO de quien aprobó en Jimaco Aprobaciones, no de un texto genérico. Si la persona
+  no tiene `UsuarioWO` configurado, se usa el respaldo `"JIMACO APROBACIONES"`.
+- `SincronizacionController` (`GET /api/sincronizacion/pendientes-wo`, `POST .../{id}/confirmar`,
+  `POST .../{id}/conflicto`) — solo los usa el Sincronizador, no la UI. `ListarPendientesEscrituraWOAsync`
+  resuelve el `UsuarioWO` a usar buscando en el `Historial` quién aprobó el paso de `Orden == 1`.
+- `Jimaco.Aprobaciones.Sincronizador/WorldOfficeWriter.cs` — clase separada de `WorldOfficeReader`,
+  con su **propio login de solo-UPDATE** (`wf_aprobaciones_writer`, ver
+  `exploracion-worldoffice.sql` Pasos 8-10 — `GRANT UPDATE` de columna puntual sobre
+  `senAprobado`/`IdTerceroAprobador` nomás, nunca `db_datawriter` sobre toda la tabla). Antes de
+  escribir, siempre relee el estado actual (`senAprobado`/`senAnulado`) — si ya está aprobado, no
+  hace nada (idempotente, se confirma igual); si está anulado, no escribe nada y se reporta como
+  conflicto (visible en el detalle del documento, `ConflictoWO`) en vez de reintentarlo para
+  siempre. Concurrencia real cubierta: si alguien aprobó/anuló por Access mientras el documento
+  seguía pendiente acá, el Sincronizador lo detecta en su próxima corrida — **no hay forma de
+  detectarlo en el momento exacto del clic en Jimaco Aprobaciones** (no hay conexión en vivo hacia
+  la red de WO desde la Api pública, solo el Sincronizador puede hablar con WO, y lo hace cada
+  tanto, no al instante).
+- **Opt-in por configuración**: si `WorldOffice:ConnectionStringEscritura` no está seteado, el
+  Sincronizador se salta esta fase entera (sigue funcionando solo para lectura). No usar el mismo
+  login que `WorldOffice:ConnectionString` (ese sigue siendo `wf_readonly`, de solo lectura).
+- **Reintentos**: automáticos, sin mecanismo especial — cada corrida vuelve a pedir la cola de
+  pendientes (`ListarPendientesEscrituraWOAsync`), así que cualquier falla puntual (WO caído en ese
+  momento, error de red) simplemente se reintenta solo en la corrida siguiente. Un error en un
+  documento puntual (a diferencia del lote de "OC nuevas") NO frena a los demás — son
+  independientes.
+
+**Todavía no verificado contra una WO real** (mismo estado que el resto del Sincronizador) —
+probado end-to-end contra la Api local con datos simulados (`IdAsientoContableOrigen`/`PrefijoOrigen`
+inventados), incluidos los tres casos (escribir bien, ya aprobado, conflicto anulado). Falta correr
+`WorldOfficeWriter` de verdad desde una máquina con alcance a la red de World Office, con el login
+`wf_aprobaciones_writer` ya creado ahí.
 
 ## Production deployment (live, 2026-09-04)
 

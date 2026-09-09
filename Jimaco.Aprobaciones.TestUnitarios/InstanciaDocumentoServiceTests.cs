@@ -165,4 +165,91 @@ public class InstanciaDocumentoServiceTests
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             servicio.EjecutarAccionAsync(instancia.Id, comercial.Id, new EjecutarAccionDto(TipoAccion.Rechazado, "motivo")));
     }
+
+    [Fact]
+    public async Task EjecutarAccionAsync_AprobarPrimerPaso_ConOrigenWO_QuedaPendienteDeEscrituraWO()
+    {
+        await using var db = CrearContexto();
+        var (emisor, comercial, _, tipo, _, _) = await SembrarFlujoDeDosPasosAsync(db);
+        var servicio = CrearServicio(db);
+        var instancia = await servicio.CrearAsync(
+            new CrearInstanciaDocumentoDto(tipo.Id, "OC-1", null, null, null, null, IdAsientoContableOrigen: 12345, PrefijoOrigen: "OC"),
+            emisor.Id);
+
+        var resultado = await servicio.EjecutarAccionAsync(instancia.Id, comercial.Id, new EjecutarAccionDto(TipoAccion.Aprobado, null));
+
+        Assert.True(resultado.PendienteEscrituraWO);
+    }
+
+    [Fact]
+    public async Task EjecutarAccionAsync_AprobarPrimerPaso_SinOrigenWO_NoQuedaPendiente()
+    {
+        await using var db = CrearContexto();
+        var (emisor, comercial, _, tipo, _, _) = await SembrarFlujoDeDosPasosAsync(db);
+        var servicio = CrearServicio(db);
+        // Documento creado a mano, sin origen de World Office.
+        var instancia = await servicio.CrearAsync(new CrearInstanciaDocumentoDto(tipo.Id, "OC-1", null, null, null, null), emisor.Id);
+
+        var resultado = await servicio.EjecutarAccionAsync(instancia.Id, comercial.Id, new EjecutarAccionDto(TipoAccion.Aprobado, null));
+
+        Assert.False(resultado.PendienteEscrituraWO);
+    }
+
+    [Fact]
+    public async Task ListarPendientesEscrituraWOAsync_ResuelveElUsuarioWODeQuienAprobo()
+    {
+        await using var db = CrearContexto();
+        var (emisor, comercial, _, tipo, _, _) = await SembrarFlujoDeDosPasosAsync(db);
+        comercial.UsuarioWO = "ANDERSON";
+        await db.SaveChangesAsync();
+
+        var servicio = CrearServicio(db);
+        var instancia = await servicio.CrearAsync(
+            new CrearInstanciaDocumentoDto(tipo.Id, "OC-1", null, null, null, null, IdAsientoContableOrigen: 12345, PrefijoOrigen: "OC"),
+            emisor.Id);
+        await servicio.EjecutarAccionAsync(instancia.Id, comercial.Id, new EjecutarAccionDto(TipoAccion.Aprobado, null));
+
+        var pendientes = await servicio.ListarPendientesEscrituraWOAsync();
+
+        var pendiente = Assert.Single(pendientes);
+        Assert.Equal(instancia.Id, pendiente.InstanciaDocumentoId);
+        Assert.Equal(12345, pendiente.IdAsientoContableOrigen);
+        Assert.Equal("OC", pendiente.PrefijoOrigen);
+        Assert.Equal("ANDERSON", pendiente.UsuarioWO);
+    }
+
+    [Fact]
+    public async Task ConfirmarEscrituraWOAsync_SacaElDocumentoDeLaCola()
+    {
+        await using var db = CrearContexto();
+        var (emisor, comercial, _, tipo, _, _) = await SembrarFlujoDeDosPasosAsync(db);
+        var servicio = CrearServicio(db);
+        var instancia = await servicio.CrearAsync(
+            new CrearInstanciaDocumentoDto(tipo.Id, "OC-1", null, null, null, null, IdAsientoContableOrigen: 12345, PrefijoOrigen: "OC"),
+            emisor.Id);
+        await servicio.EjecutarAccionAsync(instancia.Id, comercial.Id, new EjecutarAccionDto(TipoAccion.Aprobado, null));
+
+        await servicio.ConfirmarEscrituraWOAsync(instancia.Id);
+
+        Assert.Empty(await servicio.ListarPendientesEscrituraWOAsync());
+    }
+
+    [Fact]
+    public async Task ReportarConflictoWOAsync_SacaDeLaColaYDejaElMensajeVisible()
+    {
+        await using var db = CrearContexto();
+        var (emisor, comercial, _, tipo, _, _) = await SembrarFlujoDeDosPasosAsync(db);
+        var servicio = CrearServicio(db);
+        var instancia = await servicio.CrearAsync(
+            new CrearInstanciaDocumentoDto(tipo.Id, "OC-1", null, null, null, null, IdAsientoContableOrigen: 12345, PrefijoOrigen: "OC"),
+            emisor.Id);
+        await servicio.EjecutarAccionAsync(instancia.Id, comercial.Id, new EjecutarAccionDto(TipoAccion.Aprobado, null));
+
+        await servicio.ReportarConflictoWOAsync(instancia.Id, "Ya estaba anulado en WO.");
+
+        Assert.Empty(await servicio.ListarPendientesEscrituraWOAsync());
+        var detalle = await servicio.ObtenerAsync(instancia.Id);
+        Assert.Equal("Ya estaba anulado en WO.", detalle.ConflictoWO);
+        Assert.False(detalle.PendienteEscrituraWO);
+    }
 }

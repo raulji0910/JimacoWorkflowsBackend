@@ -33,6 +33,7 @@ public class UsuarioService(AppDbContext db) : IUsuarioService
             Email = dto.Email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
             Telefono = dto.Telefono,
+            UsuarioWO = dto.UsuarioWO,
             Activo = true
         };
         usuario.UsuarioRoles = roles.Select(r => new UsuarioRol { Usuario = usuario, RolId = r.Id }).ToList();
@@ -40,7 +41,7 @@ public class UsuarioService(AppDbContext db) : IUsuarioService
         db.Usuarios.Add(usuario);
         await db.SaveChangesAsync(ct);
 
-        return new UsuarioDto(usuario.Id, usuario.Nombre, usuario.Email, usuario.Telefono, usuario.Activo,
+        return new UsuarioDto(usuario.Id, usuario.Nombre, usuario.Email, usuario.Telefono, usuario.UsuarioWO, usuario.Activo,
             roles.Select(r => new RolDto(r.Id, r.Nombre, r.Descripcion, r.Activo)).ToList());
     }
 
@@ -64,6 +65,7 @@ public class UsuarioService(AppDbContext db) : IUsuarioService
         usuario.Nombre = dto.Nombre;
         usuario.Email = dto.Email;
         usuario.Telefono = dto.Telefono;
+        usuario.UsuarioWO = dto.UsuarioWO;
         usuario.Activo = dto.Activo;
 
         db.UsuarioRoles.RemoveRange(usuario.UsuarioRoles);
@@ -71,7 +73,7 @@ public class UsuarioService(AppDbContext db) : IUsuarioService
 
         await db.SaveChangesAsync(ct);
 
-        return new UsuarioDto(usuario.Id, usuario.Nombre, usuario.Email, usuario.Telefono, usuario.Activo,
+        return new UsuarioDto(usuario.Id, usuario.Nombre, usuario.Email, usuario.Telefono, usuario.UsuarioWO, usuario.Activo,
             roles.Select(r => new RolDto(r.Id, r.Nombre, r.Descripcion, r.Activo)).ToList());
     }
 
@@ -88,6 +90,6 @@ public class UsuarioService(AppDbContext db) : IUsuarioService
     }
 
     private static UsuarioDto MapearDto(Usuario u) => new(
-        u.Id, u.Nombre, u.Email, u.Telefono, u.Activo,
+        u.Id, u.Nombre, u.Email, u.Telefono, u.UsuarioWO, u.Activo,
         u.UsuarioRoles.Select(ur => new RolDto(ur.Rol.Id, ur.Rol.Nombre, ur.Rol.Descripcion, ur.Rol.Activo)).ToList());
 }
