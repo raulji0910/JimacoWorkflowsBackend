@@ -34,4 +34,13 @@ public class UsuariosController(IUsuarioService usuarioService) : ControllerBase
         await usuarioService.CambiarPasswordAsync(UsuarioActualId, dto, ct);
         return NoContent();
     }
+
+    /// <summary>Restablece la contraseña de OTRO usuario (Admin) — a diferencia de mi-password, no pide la contraseña actual. Para cuentas de servicio (sin dueño que la recuerde) y para cuando alguien real la olvida.</summary>
+    [HttpPost("{id:int}/restablecer-password")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> RestablecerPassword(int id, RestablecerPasswordDto dto, CancellationToken ct)
+    {
+        await usuarioService.RestablecerPasswordAsync(id, dto, ct);
+        return NoContent();
+    }
 }

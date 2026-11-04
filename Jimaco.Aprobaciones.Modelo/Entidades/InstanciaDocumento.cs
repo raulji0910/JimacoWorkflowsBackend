@@ -78,6 +78,17 @@ public class InstanciaDocumento
     public string? PrefijoOrigen { get; set; }
 
     /// <summary>
+    /// Usuario de World Office (<c>IdUsuarioWO</c> en la tabla madre) que mandó el documento a
+    /// aprobar — NO necesariamente la misma persona que <c>Datos.elaboradoPor</c> (confirmado con
+    /// un caso real, 2026-09-15: elaboradora y solicitante distintas). Se usa para notificarle a
+    /// esa persona el resultado del primer paso — requiere que también tenga un <see
+    /// cref="Usuario"/> registrado acá con este mismo valor en <see cref="Usuario.UsuarioWO"/>,
+    /// si no, no hay a quién mandarle el correo.
+    /// </summary>
+    [MaxLength(100)]
+    public string? SolicitanteWO { get; set; }
+
+    /// <summary>
     /// true cuando el primer paso (Orden=1) del flujo ya se aprobó en este documento Y tiene
     /// origen de WO, pero todavía no se confirmó que la aprobación se escribió allá — el
     /// Sincronizador revisa esta cola en cada corrida (ver Jimaco.Aprobaciones.Sincronizador).
@@ -94,7 +105,37 @@ public class InstanciaDocumento
 
     public DateTime? FechaEscrituraWO { get; set; }
 
+    // ---- Comprobante de Egreso (2026-09-22) — a diferencia de DocumentoVinculado, WO no liga este
+    // documento solo; Contabilidad escribe su número a mano al aprobar el paso que lo requiera
+    // (ver PasoFlujo.RequiereComprobanteEgresoAlAprobar) y el Sincronizador lo busca. ----
+
+    /// <summary>Número que Contabilidad escribió al aprobar — null hasta que se pide uno, se limpia una vez resuelto (ver ComprobanteEgreso).</summary>
+    [MaxLength(50)]
+    public string? NumeroComprobanteEgresoSolicitado { get; set; }
+
+    /// <summary>
+    /// true mientras el Sincronizador todavía no confirmó haber encontrado el comprobante en WO —
+    /// el paso YA avanzó (no se traba a Contabilidad), pero la notificación al paso siguiente se
+    /// pospone hasta que esto pase a false (ver InstanciaDocumentoService.NotificarSegunAccionAsync).
+    /// </summary>
+    public bool PendienteBusquedaComprobanteEgresoWO { get; set; }
+
+    /// <summary>Mensaje si el Sincronizador no encontró el número escrito — mismo criterio que ConflictoWO.</summary>
+    [MaxLength(500)]
+    public string? ConflictoComprobanteEgresoWO { get; set; }
+
+    public ComprobanteEgreso? ComprobanteEgreso { get; set; }
+
+    // ---- Soporte de pago (2026-09-29) — el PDF que Gerencia General adjunta al aprobar el pago
+    // real (transferencia), en el paso que tenga PasoFlujo.RequiereSoportePagoAlAprobar. Es uno
+    // más de los Adjuntos normales (mismo almacenamiento) — este campo solo marca CUÁL de ellos es
+    // el soporte, para poder mandarlo de vuelta pegado al correo de aviso a Contabilidad/emisor. ----
+
+    public int? SoportePagoAdjuntoId { get; set; }
+    public Adjunto? SoportePagoAdjunto { get; set; }
+
     public ICollection<Adjunto> Adjuntos { get; set; } = [];
     public ICollection<HistorialAccion> Historial { get; set; } = [];
     public ICollection<RenglonInstanciaDocumento> Renglones { get; set; } = [];
+    public ICollection<DocumentoVinculado> DocumentosVinculados { get; set; } = [];
 }

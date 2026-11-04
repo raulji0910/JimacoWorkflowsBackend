@@ -25,8 +25,9 @@ public class Notificacion
 {
     public int Id { get; set; }
 
-    public int InstanciaDocumentoId { get; set; }
-    public InstanciaDocumento InstanciaDocumento { get; set; } = null!;
+    /// <summary>Null para notificaciones de una Hoja de Alistamiento sin OC asociada (2026-10-21) — no hay ninguna instancia de flujo de la que colgar esta fila.</summary>
+    public int? InstanciaDocumentoId { get; set; }
+    public InstanciaDocumento? InstanciaDocumento { get; set; }
 
     public int UsuarioId { get; set; }
     public Usuario Usuario { get; set; } = null!;

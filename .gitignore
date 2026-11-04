@@ -7,3 +7,8 @@ adjuntos/
 appsettings.Local.json
 marca-de-agua.json
 publish/
+
+# Ejecutables publicados del Sincronizador (llevan appsettings.json con claves reales)
+publicado/
+publicado-prod/
+publicado-qa/

@@ -19,6 +19,34 @@ public class Rol
 
     public bool Activo { get; set; } = true;
 
+    /// <summary>
+    /// Permiso administrativo transversal (2026-09-23): quien tenga un rol con esto en true puede
+    /// buscar CUALQUIER documento (sin importar su paso actual ni si tiene el rol habilitado ahí) y
+    /// devolverlo al emisor — anula el paso en curso y SIEMPRE refleja "en espera de aprobación" en
+    /// World Office (a diferencia de la devolución normal desde un paso posterior, que no toca WO —
+    /// ver InstanciaDocumentoService.DevolverForzadoAsync). Pensado para casos administrativos, no
+    /// para el flujo normal.
+    /// </summary>
+    public bool PuedeDevolverCualquierDocumento { get; set; }
+
+    /// <summary>
+    /// Control de alistamiento (2026-09-28): quien tenga un rol con esto en true puede registrar la
+    /// cantidad disponible de cada renglón de cualquier Hoja de Alistamiento (DocumentoVinculado),
+    /// sin importar el paso actual del documento — es un proceso paralelo al flujo de aprobación,
+    /// no depende de tener el rol habilitado en ningún paso puntual. También implica poder ver el
+    /// dashboard de alistamiento (ver <see cref="PuedeVerAlistamiento"/>, que alcanza con cualquiera
+    /// de los dos).
+    /// </summary>
+    public bool PuedeGestionarAlistamiento { get; set; }
+
+    /// <summary>
+    /// Solo ver el dashboard de alistamiento (completitud/antigüedad de las Hojas de Alistamiento),
+    /// sin poder editar cantidades — pensado para Gerencia Comercial (supervisión), separado de
+    /// <see cref="PuedeGestionarAlistamiento"/> para no darle a quien solo supervisa el permiso de
+    /// tocar datos que le corresponden a Transporte.
+    /// </summary>
+    public bool PuedeVerAlistamiento { get; set; }
+
     public ICollection<UsuarioRol> UsuarioRoles { get; set; } = [];
     public ICollection<PasoFlujoRol> PasoFlujoRoles { get; set; } = [];
 }

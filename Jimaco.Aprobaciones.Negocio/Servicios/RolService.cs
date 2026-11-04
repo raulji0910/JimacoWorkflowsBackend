@@ -11,7 +11,9 @@ public class RolService(AppDbContext db) : IRolService
     public async Task<IReadOnlyList<RolDto>> ListarAsync(CancellationToken ct = default) =>
         await db.Roles
             .OrderBy(r => r.Nombre)
-            .Select(r => new RolDto(r.Id, r.Nombre, r.Descripcion, r.Activo))
+            .Select(r => new RolDto(
+                r.Id, r.Nombre, r.Descripcion, r.Activo,
+                r.PuedeDevolverCualquierDocumento, r.PuedeGestionarAlistamiento, r.PuedeVerAlistamiento))
             .ToListAsync(ct);
 
     public async Task<RolDto> CrearAsync(CrearRolDto dto, CancellationToken ct = default)
@@ -19,11 +21,19 @@ public class RolService(AppDbContext db) : IRolService
         if (await db.Roles.AnyAsync(r => r.Nombre == dto.Nombre, ct))
             throw new InvalidOperationException($"Ya existe un rol llamado \"{dto.Nombre}\".");
 
-        var rol = new Rol { Nombre = dto.Nombre, Descripcion = dto.Descripcion, Activo = true };
+        var rol = new Rol
+        {
+            Nombre = dto.Nombre,
+            Descripcion = dto.Descripcion,
+            Activo = true,
+            PuedeDevolverCualquierDocumento = dto.PuedeDevolverCualquierDocumento,
+            PuedeGestionarAlistamiento = dto.PuedeGestionarAlistamiento,
+            PuedeVerAlistamiento = dto.PuedeVerAlistamiento
+        };
         db.Roles.Add(rol);
         await db.SaveChangesAsync(ct);
 
-        return new RolDto(rol.Id, rol.Nombre, rol.Descripcion, rol.Activo);
+        return MapearDto(rol);
     }
 
     public async Task<RolDto> ActualizarAsync(int id, ActualizarRolDto dto, CancellationToken ct = default)
@@ -37,8 +47,15 @@ public class RolService(AppDbContext db) : IRolService
         rol.Nombre = dto.Nombre;
         rol.Descripcion = dto.Descripcion;
         rol.Activo = dto.Activo;
+        rol.PuedeDevolverCualquierDocumento = dto.PuedeDevolverCualquierDocumento;
+        rol.PuedeGestionarAlistamiento = dto.PuedeGestionarAlistamiento;
+        rol.PuedeVerAlistamiento = dto.PuedeVerAlistamiento;
         await db.SaveChangesAsync(ct);
 
-        return new RolDto(rol.Id, rol.Nombre, rol.Descripcion, rol.Activo);
+        return MapearDto(rol);
     }
+
+    private static RolDto MapearDto(Rol rol) => new(
+        rol.Id, rol.Nombre, rol.Descripcion, rol.Activo,
+        rol.PuedeDevolverCualquierDocumento, rol.PuedeGestionarAlistamiento, rol.PuedeVerAlistamiento);
 }

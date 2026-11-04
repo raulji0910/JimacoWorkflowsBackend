@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json.Serialization;
+using Jimaco.Aprobaciones.Api.BackgroundServices;
 using Jimaco.Aprobaciones.Api.Middleware;
 using Jimaco.Aprobaciones.Modelo;
 using Jimaco.Aprobaciones.Modelo.Entidades;
@@ -23,6 +24,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("Default")));
 
 builder.Services.AddNegocio();
+builder.Services.AddHostedService<HojaAlistamientoAlertaService>();
 
 var jwtSecret = builder.Configuration["Jwt:Secret"]
     ?? throw new InvalidOperationException("Falta configurar Jwt:Secret.");

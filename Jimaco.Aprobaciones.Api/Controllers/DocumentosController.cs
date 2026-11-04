@@ -33,13 +33,29 @@ public class DocumentosController(IInstanciaDocumentoService instanciaService, I
         Ok(await instanciaService.ListarMisDocumentosAsync(UsuarioActualId, ct));
 
     [HttpPost("{id:int}/acciones")]
-    [PermiteTokenCorreo]
+    [PermiteTokenCorreo(RequierePasoVigente = true)]
     public async Task<ActionResult<InstanciaDocumentoDetalleDto>> EjecutarAccion(int id, EjecutarAccionDto dto, CancellationToken ct) =>
         Ok(await instanciaService.EjecutarAccionAsync(id, UsuarioActualId, dto, ct));
 
     [HttpPost("{id:int}/reenviar")]
     public async Task<ActionResult<InstanciaDocumentoDetalleDto>> Reenviar(int id, CancellationToken ct) =>
         Ok(await instanciaService.ReenviarAsync(id, UsuarioActualId, ct));
+
+    /// <summary>
+    /// Búsqueda administrativa por número de referencia (coincidencia parcial), sin importar el
+    /// paso/rol del usuario — requiere el permiso <see cref="Modelo.Entidades.Rol.PuedeDevolverCualquierDocumento"/>.
+    /// </summary>
+    [HttpGet("buscar")]
+    public async Task<ActionResult<IReadOnlyList<InstanciaDocumentoResumenDto>>> Buscar([FromQuery] string numeroReferencia, CancellationToken ct) =>
+        Ok(await instanciaService.BuscarPorNumeroReferenciaAsync(numeroReferencia, UsuarioActualId, ct));
+
+    /// <summary>
+    /// Devuelve el documento al emisor sin importar el paso actual — mismo permiso administrativo
+    /// que <see cref="Buscar"/>. Ver <see cref="IInstanciaDocumentoService.DevolverForzadoAsync"/>.
+    /// </summary>
+    [HttpPost("{id:int}/devolver-forzado")]
+    public async Task<ActionResult<InstanciaDocumentoDetalleDto>> DevolverForzado(int id, DevolverForzadoDto dto, CancellationToken ct) =>
+        Ok(await instanciaService.DevolverForzadoAsync(id, UsuarioActualId, dto, ct));
 
     /// <summary>
     /// Dispara de nuevo, a demanda, la notificación del paso actual — sin cambiar el documento.
@@ -52,13 +68,14 @@ public class DocumentosController(IInstanciaDocumentoService instanciaService, I
 
     [HttpPost("{id:int}/adjuntos")]
     [RequestSizeLimit(20_000_000)]
-    public async Task<ActionResult<AdjuntoDto>> SubirAdjunto(int id, IFormFile archivo, CancellationToken ct)
+    [PermiteTokenCorreo(RequierePasoVigente = true)]
+    public async Task<ActionResult<AdjuntoDto>> SubirAdjunto(int id, IFormFile archivo, [FromQuery] bool esSoportePago, CancellationToken ct)
     {
         if (archivo.Length == 0)
             return BadRequest(new { mensaje = "El archivo está vacío." });
 
         await using var stream = archivo.OpenReadStream();
-        var resultado = await instanciaService.AgregarAdjuntoAsync(id, archivo.FileName, archivo.ContentType, stream, UsuarioActualId, ct);
+        var resultado = await instanciaService.AgregarAdjuntoAsync(id, archivo.FileName, archivo.ContentType, stream, UsuarioActualId, esSoportePago, ct);
         return Ok(resultado);
     }
 

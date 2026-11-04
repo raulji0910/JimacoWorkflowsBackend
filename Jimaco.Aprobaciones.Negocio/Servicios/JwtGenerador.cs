@@ -39,7 +39,7 @@ public class JwtGenerador(IConfiguration configuration) : IJwtGenerador
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
-    public string GenerarTokenAccionCorreo(int usuarioId, int instanciaDocumentoId, TimeSpan vigencia)
+    public string GenerarTokenAccionCorreo(int usuarioId, int instanciaDocumentoId, int pasoFlujoId, TimeSpan vigencia)
     {
         var secret = configuration["Jwt:Secret"]
             ?? throw new InvalidOperationException("Falta configurar Jwt:Secret.");
@@ -48,12 +48,15 @@ public class JwtGenerador(IConfiguration configuration) : IJwtGenerador
 
         // Sin claims de Rol a propósito: la Api re-consulta los roles reales del usuario en BD al
         // ejecutar la acción (igual que con un login normal), este token solo identifica quién es
-        // y a qué documento puntual queda acotado.
+        // y a qué documento puntual queda acotado. "paso" es el paso ACTUAL al momento de mandar
+        // el correo — si para cuando se usa el link el documento ya avanzó de ahí, queda inválido
+        // para actuar (ver TokenCorreoActionFilter).
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, usuarioId.ToString()),
             new("purpose", "correo-accion"),
-            new("doc", instanciaDocumentoId.ToString())
+            new("doc", instanciaDocumentoId.ToString()),
+            new("paso", pasoFlujoId.ToString())
         };
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));

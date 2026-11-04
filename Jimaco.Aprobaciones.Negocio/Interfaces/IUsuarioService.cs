@@ -8,4 +8,5 @@ public interface IUsuarioService
     Task<UsuarioDto> CrearAsync(CrearUsuarioDto dto, CancellationToken ct = default);
     Task<UsuarioDto> ActualizarAsync(int id, ActualizarUsuarioDto dto, int usuarioQueEditaId, CancellationToken ct = default);
     Task CambiarPasswordAsync(int id, CambiarPasswordDto dto, CancellationToken ct = default);
+    Task RestablecerPasswordAsync(int id, RestablecerPasswordDto dto, CancellationToken ct = default);
 }

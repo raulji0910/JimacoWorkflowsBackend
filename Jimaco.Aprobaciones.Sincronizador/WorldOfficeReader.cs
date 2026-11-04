@@ -47,6 +47,37 @@ public class WorldOfficeReader(string connectionString)
         return filas.ToList();
     }
 
+    /// <summary>
+    /// Un documento puntual por prefijo + número (no por rango de IdAsientoContable) — para cuando
+    /// la detección de "hay un documento nuevo" viene de otro lado (el correo de "Solicitar
+    /// Aprobación", ver <see cref="CorreoAprobacionWatcher"/>) en vez de escanear la base. Null si
+    /// no existe esa fila o está anulada — el llamador decide qué hacer con eso (ver Program.cs).
+    /// </summary>
+    public async Task<OcHeaderRow?> ObtenerDocumentoPorReferenciaAsync(string prefijo, decimal documentoNumero, CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT
+                IdAsientoContable,
+                prefijo               AS Prefijo,
+                DocumentoNúmero       AS DocumentoNumero,
+                Fecha,
+                IdTerceroExterno,
+                IdTerceroInterno,
+                NúmDocumentoExterno   AS NumDocumentoExterno,
+                Nota,
+                IdFormaDePago,
+                IdUsuarioWO           AS SolicitanteWO,
+                Personalizado4
+            FROM [CuentasContables - Asientos]
+            WHERE prefijo = @Prefijo AND DocumentoNúmero = @DocumentoNumero
+              AND (senAnulado = 0 OR senAnulado IS NULL);
+            """;
+
+        await using var conexion = new SqlConnection(connectionString);
+        var comando = new CommandDefinition(sql, new { Prefijo = prefijo, DocumentoNumero = documentoNumero }, cancellationToken: ct);
+        return await conexion.QueryFirstOrDefaultAsync<OcHeaderRow>(comando);
+    }
+
     public async Task<TerceroRow?> ObtenerTerceroAsync(int idTercero, CancellationToken ct = default)
     {
         const string sql = """
@@ -72,5 +103,235 @@ public class WorldOfficeReader(string connectionString)
         await using var conexion = new SqlConnection(connectionString);
         var comando = new CommandDefinition(sql, new { IdAsientoContable = idAsientoContable }, cancellationToken: ct);
         return await conexion.ExecuteScalarAsync<decimal?>(comando) ?? 0m;
+    }
+
+    /// <summary>
+    /// Los renglones/ítems reales de la OC (ver esquema-worldoffice-oc.md, sección
+    /// "CCA_M_Inventarios") — código y descripción salen de <c>Inventarios</c>, el resto de la
+    /// línea misma. El IVA se toma del producto (<c>Inventarios.Iva</c>) porque la línea no trae su
+    /// propio porcentaje.
+    /// </summary>
+    public async Task<IReadOnlyList<RenglonRow>> ObtenerRenglonesAsync(int idAsientoContable, CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT
+                inv.CódigoInventario AS Codigo,
+                inv.Descripción      AS Descripcion,
+                c.Cantidad,
+                c.UnidadDeMedida     AS UnidadMedida,
+                c.MontoMonetarioUnitario AS ValorUnitario,
+                inv.Iva              AS PorcentajeIva
+            FROM CCA_M_Inventarios c
+            LEFT JOIN Inventarios inv ON inv.IdInventario = c.IdInventario
+            WHERE c.IdAsientoContable = @IdAsientoContable
+            ORDER BY c.[Renglón];
+            """;
+
+        await using var conexion = new SqlConnection(connectionString);
+        var comando = new CommandDefinition(sql, new { IdAsientoContable = idAsientoContable }, cancellationToken: ct);
+        var filas = await conexion.QueryAsync<RenglonRow>(comando);
+        return filas.ToList();
+    }
+
+    /// <summary>
+    /// Descripción de la forma de pago — la tabla catálogo es <c>[Formas De Pago]</c> (con
+    /// espacios), pero no se confirmó todavía el nombre exacto de su columna de texto (ver
+    /// esquema-worldoffice-oc.md). Para no tumbar la sincronización entera por un nombre de columna
+    /// equivocado, se toma dinámicamente la primera columna de texto no vacía distinta del id, en
+    /// vez de asumir un nombre fijo.
+    /// </summary>
+    public async Task<string?> ObtenerFormaDePagoAsync(int idFormaDePago, CancellationToken ct = default)
+    {
+        const string sql = "SELECT * FROM [Formas De Pago] WHERE IdFormaDePago = @IdFormaDePago;";
+
+        await using var conexion = new SqlConnection(connectionString);
+        var comando = new CommandDefinition(sql, new { IdFormaDePago = idFormaDePago }, cancellationToken: ct);
+        var fila = await conexion.QueryFirstOrDefaultAsync(comando) as IDictionary<string, object>;
+        if (fila is null) return null;
+
+        foreach (var (columna, valor) in fila)
+        {
+            if (columna.Equals("IdFormaDePago", StringComparison.OrdinalIgnoreCase)) continue;
+            if (valor is string texto && !string.IsNullOrWhiteSpace(texto)) return texto.Trim();
+        }
+        return null;
+    }
+
+    /// <summary>Dirección principal de un tercero (<c>Terceros - Direcciones</c>, unida por <c>IdTercero</c>, no por <c>IdDirección</c>) — prefiere la marcada <c>senDirecPpal</c>, si no hay ninguna toma cualquiera.</summary>
+    public async Task<string?> ObtenerDireccionPrincipalAsync(int idTercero, CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT TOP 1 Dirección
+            FROM [Terceros - Direcciones]
+            WHERE IdTercero = @IdTercero
+            ORDER BY senDirecPpal DESC;
+            """;
+
+        await using var conexion = new SqlConnection(connectionString);
+        var comando = new CommandDefinition(sql, new { IdTercero = idTercero }, cancellationToken: ct);
+        return await conexion.ExecuteScalarAsync<string?>(comando);
+    }
+
+    /// <summary>
+    /// Una dirección puntual por su Id exacto (<c>IdTerceroDireccion</c>, la PK de <c>Terceros -
+    /// Direcciones</c> — es lo que guarda <c>IdDirecciónExterno</c> en la tabla madre, confirmado
+    /// cruzando ambos valores), con la Ciudad ya resuelta contra <c>Ciudades</c>. A diferencia de
+    /// <see cref="ObtenerDireccionPrincipalAsync"/>, no asume "la principal del tercero" — usa
+    /// exactamente la dirección que el documento tenía seleccionada.
+    /// </summary>
+    public async Task<DireccionRow?> ObtenerDireccionPorIdAsync(int idDireccion, CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT d.Dirección AS Direccion, d.Teléfonos AS Telefonos, c.Ciudad
+            FROM [Terceros - Direcciones] d
+            LEFT JOIN Ciudades c ON c.IdCiudad = d.IdCiudad
+            WHERE d.IdTerceroDireccion = @IdDireccion;
+            """;
+
+        await using var conexion = new SqlConnection(connectionString);
+        var comando = new CommandDefinition(sql, new { IdDireccion = idDireccion }, cancellationToken: ct);
+        return await conexion.QueryFirstOrDefaultAsync<DireccionRow>(comando);
+    }
+
+    /// <summary>
+    /// Un documento externo ligado a otro (ej. la Cotización de origen de una Orden de Compra, vía
+    /// <c>NúmDocumentoExterno</c>) — misma tabla madre, pero con los campos extra que necesita la
+    /// Hoja de Alistamiento (<c>IdDirecciónExterno</c>, <c>Personalizado2</c>) que la lectura
+    /// normal de OC nunca pidió. Null si no existe o está anulado.
+    /// </summary>
+    public async Task<OcHeaderRow?> ObtenerDocumentoVinculadoAsync(string prefijo, decimal documentoNumero, CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT
+                IdAsientoContable,
+                prefijo               AS Prefijo,
+                DocumentoNúmero       AS DocumentoNumero,
+                Fecha,
+                IdTerceroExterno,
+                IdTerceroInterno,
+                NúmDocumentoExterno   AS NumDocumentoExterno,
+                Nota,
+                IdFormaDePago,
+                IdDirecciónExterno    AS IdDireccionExterno,
+                Personalizado2
+            FROM [CuentasContables - Asientos]
+            WHERE prefijo = @Prefijo AND DocumentoNúmero = @DocumentoNumero
+              AND (senAnulado = 0 OR senAnulado IS NULL);
+            """;
+
+        await using var conexion = new SqlConnection(connectionString);
+        var comando = new CommandDefinition(sql, new { Prefijo = prefijo, DocumentoNumero = documentoNumero }, cancellationToken: ct);
+        return await conexion.QueryFirstOrDefaultAsync<OcHeaderRow>(comando);
+    }
+
+    /// <summary>
+    /// Las líneas débito/crédito de un Comprobante de Egreso (prefijo <c>CEJ</c>, misma tabla madre
+    /// que OC/COT — ver <see cref="ObtenerDocumentoVinculadoAsync"/> para la cabecera). Esquema
+    /// confirmado con datos reales, no adivinado (ver comentario en <see
+    /// cref="Models.DetalleComprobanteEgresoRow"/>).
+    /// </summary>
+    public async Task<IReadOnlyList<DetalleComprobanteEgresoRow>> ObtenerDetalleComprobanteEgresoAsync(int idAsientoContable, CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT
+                IdCuentaContable,
+                Débito  AS Debito,
+                Crédito AS Credito,
+                Nota,
+                Renglón AS Renglon
+            FROM [CuentasContables - Asientos - Detalles]
+            WHERE IdAsientoContable = @IdAsientoContable
+            ORDER BY Renglón;
+            """;
+
+        await using var conexion = new SqlConnection(connectionString);
+        var comando = new CommandDefinition(sql, new { IdAsientoContable = idAsientoContable }, cancellationToken: ct);
+        var filas = await conexion.QueryAsync<DetalleComprobanteEgresoRow>(comando);
+        return filas.ToList();
+    }
+
+    /// <summary>
+    /// Remisiones recientes (prefijo <c>REM</c>, no anuladas) con su campo libre "COTIZACION"
+    /// (<c>Personalizado4</c>) — se trae de una sola vez, acotado a los últimos <paramref
+    /// name="diasAtras"/> días, en vez de consultar WO una vez por cada Cotización pendiente (más
+    /// barato: un solo escaneo acotado contra N consultas puntuales). El cruce real (extraer los
+    /// números del texto libre y comparar) lo hace <c>Program.cs</c>.
+    /// </summary>
+    public async Task<IReadOnlyList<RemisionRow>> ObtenerRemisionesRecientesAsync(int diasAtras, CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT
+                IdAsientoContable,
+                DocumentoNúmero AS DocumentoNumero,
+                Fecha,
+                Personalizado4  AS Cotizacion
+            FROM [CuentasContables - Asientos]
+            WHERE prefijo = 'REM'
+              AND (senAnulado = 0 OR senAnulado IS NULL)
+              AND Fecha >= DATEADD(day, -@DiasAtras, CAST(GETDATE() AS DATE))
+              AND Personalizado4 IS NOT NULL AND Personalizado4 <> '';
+            """;
+
+        await using var conexion = new SqlConnection(connectionString);
+        var comando = new CommandDefinition(sql, new { DiasAtras = diasAtras }, cancellationToken: ct);
+        var filas = await conexion.QueryAsync<RemisionRow>(comando);
+        return filas.ToList();
+    }
+
+    /// <summary>
+    /// Cotizaciones recientes (prefijo <c>COT</c>, no anuladas) marcadas a propósito por el vendedor
+    /// como Hoja de Alistamiento sin OC (2026-10-22): el campo "Contacto" del encabezado en World
+    /// Office (<c>Personalizado1</c> para este prefijo — confirmado por SQL contra la Cotización
+    /// 16314, ver CONTEXTO_PROYECTO... en memoria) debe CONTENER la palabra "INVENTARIO" (no
+    /// exigimos que sea igual, el usuario dejó la puerta abierta a que el vendedor escriba algo más
+    /// en el mismo campo, ej. "INVENTARIO - BOGOTÁ"). Es una señal EXPLÍCITA puesta a propósito por
+    /// quien sabe si la venta va en serio — reemplaza la idea descartada de traer TODA Cotización
+    /// reciente sin más filtro, que traía ruido (Cotizaciones que nunca se concretan).
+    /// <paramref name="fechaInicio"/> es un piso FIJO (pedido explícito del usuario: "que solo busque
+    /// a partir de hoy, lo antiguo no lo traiga") — el día en que esta función se activó en
+    /// producción, para que nunca traiga Cotizaciones viejas aunque por casualidad tengan
+    /// "INVENTARIO" en ese campo por otra razón. <paramref name="diasAtras"/> es solo una cota de
+    /// rendimiento adicional (para no escanear una ventana cada vez más vieja con el paso de los
+    /// meses) — entre las dos gana la más reciente, nunca se baja del piso fijo. Program.cs decide
+    /// cuáles ya existen en nuestro sistema (el endpoint de creación es idempotente de todas formas).
+    /// </summary>
+    public async Task<IReadOnlyList<CotizacionRecienteRow>> ObtenerCotizacionesRecientesAsync(DateTime fechaInicio, int diasAtras, CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT
+                DocumentoNúmero AS DocumentoNumero,
+                Fecha
+            FROM [CuentasContables - Asientos]
+            WHERE prefijo = 'COT'
+              AND (senAnulado = 0 OR senAnulado IS NULL)
+              AND Personalizado1 LIKE '%INVENTARIO%'
+              AND Fecha >= @FechaInicio
+              AND Fecha >= DATEADD(day, -@DiasAtras, CAST(GETDATE() AS DATE));
+            """;
+
+        await using var conexion = new SqlConnection(connectionString);
+        var comando = new CommandDefinition(sql, new { FechaInicio = fechaInicio, DiasAtras = diasAtras }, cancellationToken: ct);
+        var filas = await conexion.QueryAsync<CotizacionRecienteRow>(comando);
+        return filas.ToList();
+    }
+
+    /// <summary>Resuelve varios <c>IdCuentaContable</c> de una vez contra el catálogo <c>CuentasContables</c> (código real + nombre impresos).</summary>
+    public async Task<IReadOnlyList<CuentaContableRow>> ObtenerCuentasContablesAsync(IReadOnlyCollection<int> ids, CancellationToken ct = default)
+    {
+        if (ids.Count == 0) return [];
+
+        const string sql = """
+            SELECT
+                IdCuentaContable,
+                CódigoCuentaContable AS CodigoCuentaContable,
+                CuentaContable
+            FROM CuentasContables
+            WHERE IdCuentaContable IN @Ids;
+            """;
+
+        await using var conexion = new SqlConnection(connectionString);
+        var comando = new CommandDefinition(sql, new { Ids = ids }, cancellationToken: ct);
+        var filas = await conexion.QueryAsync<CuentaContableRow>(comando);
+        return filas.ToList();
     }
 }

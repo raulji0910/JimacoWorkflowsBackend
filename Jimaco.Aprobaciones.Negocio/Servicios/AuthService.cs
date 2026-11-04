@@ -16,8 +16,13 @@ public class AuthService(AppDbContext db, IJwtGenerador jwtGenerador) : IAuthSer
         if (usuario is null || !BCrypt.Net.BCrypt.Verify(password, usuario.PasswordHash))
             return null;
 
-        var roles = usuario.UsuarioRoles.Where(ur => ur.Rol.Activo).Select(ur => ur.Rol.Nombre).ToList();
+        var rolesActivos = usuario.UsuarioRoles.Where(ur => ur.Rol.Activo).Select(ur => ur.Rol).ToList();
+        var roles = rolesActivos.Select(r => r.Nombre).ToList();
+        var puedeDevolverCualquierDocumento = rolesActivos.Any(r => r.PuedeDevolverCualquierDocumento);
+        var puedeGestionarAlistamiento = rolesActivos.Any(r => r.PuedeGestionarAlistamiento);
+        var puedeVerAlistamiento = rolesActivos.Any(r => r.PuedeVerAlistamiento);
         var token = jwtGenerador.GenerarToken(usuario, roles);
-        return new LoginResponseDto(token, usuario.Nombre, usuario.Email, roles);
+        return new LoginResponseDto(token, usuario.Nombre, usuario.Email, roles, puedeDevolverCualquierDocumento,
+            puedeGestionarAlistamiento, puedeVerAlistamiento);
     }
 }

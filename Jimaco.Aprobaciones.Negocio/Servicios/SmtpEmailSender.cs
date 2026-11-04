@@ -15,7 +15,7 @@ namespace Jimaco.Aprobaciones.Negocio.Servicios;
 /// </summary>
 public class SmtpEmailSender(IConfiguration configuration) : IEmailSender
 {
-    public async Task EnviarAsync(string destinatario, string asunto, string cuerpoHtml, CancellationToken ct = default)
+    public async Task EnviarAsync(string destinatario, string asunto, string cuerpoHtml, IReadOnlyList<AdjuntoCorreo>? adjuntos = null, CancellationToken ct = default)
     {
         var host = configuration["Smtp:Host"] ?? throw new InvalidOperationException("Falta configurar Smtp:Host.");
         var puerto = int.TryParse(configuration["Smtp:Port"], out var p) ? p : 587;
@@ -29,7 +29,11 @@ public class SmtpEmailSender(IConfiguration configuration) : IEmailSender
         mensaje.From.Add(new MailboxAddress(remitenteNombre, remitenteEmail));
         mensaje.To.Add(MailboxAddress.Parse(destinatario));
         mensaje.Subject = asunto;
-        mensaje.Body = new BodyBuilder { HtmlBody = cuerpoHtml }.ToMessageBody();
+
+        var cuerpo = new BodyBuilder { HtmlBody = cuerpoHtml };
+        foreach (var adjunto in adjuntos ?? [])
+            cuerpo.Attachments.Add(adjunto.NombreArchivo, adjunto.Contenido, ContentType.Parse(adjunto.ContentType ?? "application/octet-stream"));
+        mensaje.Body = cuerpo.ToMessageBody();
 
         using var cliente = new SmtpClient();
         var modoSeguridad = usarSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls;

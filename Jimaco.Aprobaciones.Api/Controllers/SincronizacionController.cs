@@ -15,7 +15,7 @@ namespace Jimaco.Aprobaciones.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class SincronizacionController(IInstanciaDocumentoService instanciaService) : ControllerBase
+public class SincronizacionController(IInstanciaDocumentoService instanciaService, IHojaAlistamientoService hojaAlistamientoService) : ControllerBase
 {
     [HttpGet("pendientes-wo")]
     public async Task<ActionResult<IReadOnlyList<PendienteEscrituraWODto>>> ListarPendientesWO(CancellationToken ct) =>
@@ -32,6 +32,61 @@ public class SincronizacionController(IInstanciaDocumentoService instanciaServic
     public async Task<IActionResult> ReportarConflictoWO(int id, ReportarConflictoWODto dto, CancellationToken ct)
     {
         await instanciaService.ReportarConflictoWOAsync(id, dto.Mensaje, ct);
+        return Ok();
+    }
+
+    // ---- Comprobante de Egreso (2026-09-22) — mismo patrón "pedir y recoger" de arriba. ----
+
+    [HttpGet("pendientes-comprobante-egreso")]
+    public async Task<ActionResult<IReadOnlyList<PendienteComprobanteEgresoDto>>> ListarPendientesComprobanteEgreso(CancellationToken ct) =>
+        Ok(await instanciaService.ListarPendientesComprobanteEgresoAsync(ct));
+
+    [HttpPost("pendientes-comprobante-egreso/{id:int}/encontrado")]
+    public async Task<IActionResult> AdjuntarComprobanteEgreso(int id, ComprobanteEgresoEncontradoDto dto, CancellationToken ct)
+    {
+        await instanciaService.AdjuntarComprobanteEgresoAsync(id, dto, ct);
+        return Ok();
+    }
+
+    [HttpPost("pendientes-comprobante-egreso/{id:int}/conflicto")]
+    public async Task<IActionResult> ReportarConflictoComprobanteEgreso(int id, ReportarConflictoWODto dto, CancellationToken ct)
+    {
+        await instanciaService.ReportarConflictoComprobanteEgresoAsync(id, dto.Mensaje, ct);
+        return Ok();
+    }
+
+    // ---- Remisionado (2026-10-09) — mismo patrón "pedir y recoger" de arriba. ----
+
+    [HttpGet("pendientes-remision")]
+    public async Task<ActionResult<IReadOnlyList<PendienteRemisionDto>>> ListarPendientesRemision(CancellationToken ct) =>
+        Ok(await hojaAlistamientoService.ListarPendientesRemisionAsync(ct));
+
+    [HttpPost("pendientes-remision/marcar")]
+    public async Task<IActionResult> MarcarRemisionada(MarcarRemisionadaDto dto, CancellationToken ct)
+    {
+        await hojaAlistamientoService.MarcarRemisionadaAsync(dto, ct);
+        return Ok();
+    }
+
+    // ---- Refrescar Hojas de Alistamiento activas contra WO (2026-10-14) ----
+
+    [HttpGet("hojas-alistamiento/pendientes-refresco")]
+    public async Task<ActionResult<IReadOnlyList<PendienteRefrescoDto>>> ListarPendientesRefresco(CancellationToken ct) =>
+        Ok(await hojaAlistamientoService.ListarPendientesRefrescoAsync(ct));
+
+    [HttpPost("hojas-alistamiento/refrescar")]
+    public async Task<IActionResult> RefrescarHojaAlistamiento(DocumentoVinculadoInputDto dto, CancellationToken ct)
+    {
+        await hojaAlistamientoService.RefrescarDesdeWOAsync(dto, ct);
+        return Ok();
+    }
+
+    // ---- Hojas de Alistamiento sin OC asociada (2026-10-21) ----
+
+    [HttpPost("hojas-alistamiento/crear-sin-oc")]
+    public async Task<IActionResult> CrearHojaAlistamientoSinOc(DocumentoVinculadoInputDto dto, CancellationToken ct)
+    {
+        await hojaAlistamientoService.CrearSinOcAsync(dto, ct);
         return Ok();
     }
 }

@@ -29,6 +29,16 @@ public class Usuario
     [MaxLength(100)]
     public string? UsuarioWO { get; set; }
 
+    /// <summary>
+    /// Uno o varios nombres completos (separados por ";") tal como World Office los pone en
+    /// "Elaborado por" de una Cotización (ej. "LAURA SOFIA HERNANDEZ CARO") — distinto de
+    /// <see cref="UsuarioWO"/>, que es el nombre corto. Esta persona recibe los avisos por correo de
+    /// las Hojas de Alistamiento de cotizaciones elaboradas por cualquiera de esos nombres; varios
+    /// nombres permiten que dos vendedoras compartan sus avisos (pedido real: Laura y Yazmín).
+    /// </summary>
+    [MaxLength(500)]
+    public string? NombresCompletosWO { get; set; }
+
     public bool Activo { get; set; } = true;
 
     public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;

@@ -22,4 +22,20 @@ public class FlujosController(IDefinicionFlujoService flujoService) : Controller
     [Authorize(Roles = "Admin")]
     public async Task<ActionResult<DefinicionFlujoDto>> Crear(CrearDefinicionFlujoDto dto, CancellationToken ct) =>
         Ok(await flujoService.CrearAsync(dto, ct));
+
+    [HttpPost("{id:int}/desactivar")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Desactivar(int id, CancellationToken ct)
+    {
+        await flujoService.DesactivarAsync(id, ct);
+        return NoContent();
+    }
+
+    [HttpPost("{id:int}/activar")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Activar(int id, CancellationToken ct)
+    {
+        await flujoService.ActivarAsync(id, ct);
+        return NoContent();
+    }
 }

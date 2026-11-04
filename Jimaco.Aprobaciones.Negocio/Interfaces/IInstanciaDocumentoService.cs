@@ -29,6 +29,20 @@ public interface IInstanciaDocumentoService
     /// </summary>
     Task<ReenvioNotificacionResultadoDto> ReenviarNotificacionAsync(int id, int usuarioId, CancellationToken ct = default);
 
+    // ---- Buscar y devolver cualquier documento (2026-09-23) — permiso administrativo transversal,
+    // ver Rol.PuedeDevolverCualquierDocumento. Ambos métodos rechazan (UnauthorizedAccessException)
+    // si el usuario no tiene ningún rol con ese permiso. ----
+
+    /// <summary>Busca por número de referencia (coincidencia parcial), sin importar el paso/rol del usuario.</summary>
+    Task<IReadOnlyList<InstanciaDocumentoResumenDto>> BuscarPorNumeroReferenciaAsync(string numeroReferencia, int usuarioId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Devuelve el documento al emisor sin importar el paso actual ni el rol del usuario ahí —
+    /// anula el paso en curso y SIEMPRE queda pendiente de reflejar "en espera de aprobación" en
+    /// World Office (a diferencia de una devolución normal desde un paso posterior, que no toca WO).
+    /// </summary>
+    Task<InstanciaDocumentoDetalleDto> DevolverForzadoAsync(int id, int usuarioId, DevolverForzadoDto dto, CancellationToken ct = default);
+
     // ---- Sincronización de aprobación de vuelta a World Office (Fase 2) — usado por
     // Jimaco.Aprobaciones.Sincronizador, no por la UI. ----
 
@@ -41,7 +55,24 @@ public interface IInstanciaDocumentoService
     /// <summary>El Sincronizador encontró un conflicto en WO (ej. la fila ya estaba anulada) — no reintentar, dejarlo visible.</summary>
     Task ReportarConflictoWOAsync(int instanciaDocumentoId, string mensaje, CancellationToken ct = default);
 
-    Task<AdjuntoDto> AgregarAdjuntoAsync(int id, string nombreArchivo, string? contentType, Stream contenido, int usuarioId, CancellationToken ct = default);
+    // ---- Comprobante de Egreso (2026-09-22) — mismo patrón "pedir y recoger", usado por
+    // Jimaco.Aprobaciones.Sincronizador, no por la UI. ----
+
+    /// <summary>Documentos esperando que el Sincronizador busque su Comprobante de Egreso en WO.</summary>
+    Task<IReadOnlyList<PendienteComprobanteEgresoDto>> ListarPendientesComprobanteEgresoAsync(CancellationToken ct = default);
+
+    /// <summary>El Sincronizador encontró el comprobante en WO — se adjunta y se dispara la notificación pospuesta.</summary>
+    Task AdjuntarComprobanteEgresoAsync(int instanciaDocumentoId, ComprobanteEgresoEncontradoDto dto, CancellationToken ct = default);
+
+    /// <summary>El Sincronizador no encontró el comprobante (ej. número mal escrito) — no reintentar, dejarlo visible.</summary>
+    Task ReportarConflictoComprobanteEgresoAsync(int instanciaDocumentoId, string mensaje, CancellationToken ct = default);
+
+    /// <summary>
+    /// <paramref name="esSoportePago"/> true (2026-09-29): valida que sea un PDF antes de guardarlo
+    /// — usado cuando se sube el soporte de pago de Gerencia General, para dar el error apenas
+    /// elige el archivo en vez de recién al intentar aprobar.
+    /// </summary>
+    Task<AdjuntoDto> AgregarAdjuntoAsync(int id, string nombreArchivo, string? contentType, Stream contenido, int usuarioId, bool esSoportePago = false, CancellationToken ct = default);
 
     Task<(Stream Contenido, string NombreArchivo, string? ContentType)> DescargarAdjuntoAsync(int adjuntoId, CancellationToken ct = default);
 }

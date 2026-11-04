@@ -88,6 +88,115 @@ public class JimacoAprobacionesClient(HttpClient http, string email, string pass
         await LanzarSiErrorAsync(response, ct);
     }
 
+    public async Task<IReadOnlyList<PendienteComprobanteEgresoDto>> ListarPendientesComprobanteEgresoAsync(CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/sincronizacion/pendientes-comprobante-egreso");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+
+        return (await response.Content.ReadFromJsonAsync<IReadOnlyList<PendienteComprobanteEgresoDto>>(JsonOpciones, ct))!;
+    }
+
+    public async Task AdjuntarComprobanteEgresoAsync(int instanciaDocumentoId, ComprobanteEgresoEncontradoDto dto, CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"api/sincronizacion/pendientes-comprobante-egreso/{instanciaDocumentoId}/encontrado")
+        {
+            Content = JsonContent.Create(dto, options: JsonOpciones)
+        };
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+    }
+
+    public async Task ReportarConflictoComprobanteEgresoAsync(int instanciaDocumentoId, string mensaje, CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"api/sincronizacion/pendientes-comprobante-egreso/{instanciaDocumentoId}/conflicto")
+        {
+            Content = JsonContent.Create(new ReportarConflictoWODto(mensaje), options: JsonOpciones)
+        };
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+    }
+
+    public async Task<IReadOnlyList<PendienteRemisionDto>> ListarPendientesRemisionAsync(CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/sincronizacion/pendientes-remision");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+
+        return (await response.Content.ReadFromJsonAsync<IReadOnlyList<PendienteRemisionDto>>(JsonOpciones, ct))!;
+    }
+
+    public async Task MarcarRemisionadaAsync(MarcarRemisionadaDto dto, CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "api/sincronizacion/pendientes-remision/marcar")
+        {
+            Content = JsonContent.Create(dto, options: JsonOpciones)
+        };
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+    }
+
+    public async Task<IReadOnlyList<PendienteRefrescoDto>> ListarPendientesRefrescoAsync(CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/sincronizacion/hojas-alistamiento/pendientes-refresco");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+
+        return (await response.Content.ReadFromJsonAsync<IReadOnlyList<PendienteRefrescoDto>>(JsonOpciones, ct))!;
+    }
+
+    public async Task RefrescarHojaAlistamientoAsync(DocumentoVinculadoInputDto dto, CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "api/sincronizacion/hojas-alistamiento/refrescar")
+        {
+            Content = JsonContent.Create(dto, options: JsonOpciones)
+        };
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+    }
+
+    public async Task CrearHojaAlistamientoSinOcAsync(DocumentoVinculadoInputDto dto, CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "api/sincronizacion/hojas-alistamiento/crear-sin-oc")
+        {
+            Content = JsonContent.Create(dto, options: JsonOpciones)
+        };
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+    }
+
     private async Task AsegurarTokenAsync(CancellationToken ct)
     {
         // Un margen de 1 minuto antes de que expire, para no arrancar una petición con un token

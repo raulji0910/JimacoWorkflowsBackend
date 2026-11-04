@@ -8,7 +8,16 @@ public enum TipoAccion
     Aprobado = 2,
     Devuelto = 3,
     Rechazado = 4,
-    Reenviado = 5
+    Reenviado = 5,
+
+    /// <summary>
+    /// Redirección a discreción hacia un paso más adelante en el mismo flujo (ej. Gerencia General
+    /// decide pagar de contado en vez de por transferencia, y el documento pasa a Asistente de
+    /// Gerencia para el desembolso) — ver PasoFlujo.PasoRedirigirAPagoContadoId. A diferencia de
+    /// Devolver, no es una corrección hacia atrás: el documento sigue su curso normal desde el
+    /// paso destino.
+    /// </summary>
+    RedirigidoAContado = 6
 }
 
 /// <summary>Registro inmutable de auditoría: quién hizo qué, cuándo, y con qué comentario, sobre una instancia de documento.</summary>
