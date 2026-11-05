@@ -100,9 +100,26 @@ public class InstanciaDocumentoService(
                     existente.Renglones.Clear();
                     foreach (var r in renglonesFrescos) existente.Renglones.Add(r);
 
+                    // Bug real (2026-11-04, OC 19857 / Hoja 16109): esto hacía Clear() + copias nuevas —
+                    // la copia vieja (con todo el avance de Transporte) quedaba huérfana como si fuera
+                    // una Hoja sin OC, y la nueva arrancaba en 0, así que 4 horas después saltaba la
+                    // alerta de "sigue incompleta" sobre una Hoja ya completa y remisionada. Ahora la
+                    // copia de una Cotización que sigue ligada se CONSERVA tal cual (sus datos se
+                    // refrescan solos por RefrescarDesdeWOAsync), la que ya no está ligada se borra de
+                    // verdad, y solo se crea copia para una Cotización nueva — heredando el avance de
+                    // sus hermanas si la Cotización ya estaba ligada a otra OC.
                     var vinculadosFrescos = ConstruirDocumentosVinculados(dto.DocumentosVinculados);
-                    existente.DocumentosVinculados.Clear();
-                    foreach (var v in vinculadosFrescos) existente.DocumentosVinculados.Add(v);
+                    var clavesFrescas = vinculadosFrescos.Select(v => (v.PrefijoOrigen, v.NumeroReferencia)).ToHashSet();
+                    foreach (var vieja in existente.DocumentosVinculados.Where(v => !clavesFrescas.Contains((v.PrefijoOrigen, v.NumeroReferencia))).ToList())
+                    {
+                        existente.DocumentosVinculados.Remove(vieja);
+                        db.DocumentosVinculados.Remove(vieja);
+                    }
+                    var nuevasCopias = vinculadosFrescos
+                        .Where(v => !existente.DocumentosVinculados.Any(e => e.PrefijoOrigen == v.PrefijoOrigen && e.NumeroReferencia == v.NumeroReferencia))
+                        .ToList();
+                    await HeredarAvanceDeCopiasHermanasAsync(nuevasCopias, ct);
+                    foreach (var v in nuevasCopias) existente.DocumentosVinculados.Add(v);
 
                     existente.Proveedor = dto.Proveedor;
                     existente.FechaDocumento = dto.FechaDocumento;
@@ -154,6 +171,7 @@ public class InstanciaDocumentoService(
         var valor = CalcularValorConIva(renglones, dto.Valor);
 
         var documentosVinculados = ConstruirDocumentosVinculados(dto.DocumentosVinculados);
+        await HeredarAvanceDeCopiasHermanasAsync(documentosVinculados, ct);
 
         var formaDePago = dto.Datos?.GetValueOrDefault("formaDePago");
         var flujo = await SeleccionarFlujoAsync(dto.TipoDocumentoId, valor, formaDePago, ct);
@@ -957,6 +975,52 @@ public class InstanciaDocumentoService(
                 Total = r.Cantidad * r.ValorUnitario
             }).ToList()
         }).ToList();
+
+    /// <summary>
+    /// Una copia NUEVA de una Cotización que ya existe en el sistema (otra OC ligada a la misma
+    /// Cotización, o el reenvío de una OC) arranca con el avance que ya tienen sus hermanas: cantidad
+    /// disponible, despachos de Remisión y las marcas de aviso — si no, arrancaría en 0 sobre una Hoja
+    /// que Transporte ya completó y dispararía la alerta de "sigue incompleta" (bug real 2026-11-04,
+    /// Hoja 16109). Los renglones se emparejan por Código y posición entre los que comparten Código
+    /// (por Orden si no traen código), el mismo criterio de ActualizarCantidadesAsync.
+    /// </summary>
+    private async Task HeredarAvanceDeCopiasHermanasAsync(IReadOnlyList<DocumentoVinculado> nuevas, CancellationToken ct)
+    {
+        foreach (var nueva in nuevas)
+        {
+            var hermana = await db.DocumentosVinculados
+                .Include(d => d.Renglones).ThenInclude(r => r.DespachosRemision)
+                .Where(d => d.PrefijoOrigen == nueva.PrefijoOrigen && d.NumeroReferencia == nueva.NumeroReferencia)
+                .OrderBy(d => d.Id)
+                .FirstOrDefaultAsync(ct);
+            if (hermana is null) continue;
+
+            nueva.UltimaAlertaEnviada = hermana.UltimaAlertaEnviada;
+            nueva.AvisoCompletaRemisionadaEnviado = hermana.AvisoCompletaRemisionadaEnviado;
+
+            List<RenglonDocumentoVinculado> Candidatos(DocumentoVinculado doc, RenglonDocumentoVinculado r) =>
+                r.Codigo != null
+                    ? doc.Renglones.Where(x => x.Codigo == r.Codigo).OrderBy(x => x.Orden).ToList()
+                    : doc.Renglones.Where(x => x.Codigo == null && x.Orden == r.Orden).ToList();
+
+            foreach (var renglon in nueva.Renglones)
+            {
+                var posicion = Candidatos(nueva, renglon).IndexOf(renglon);
+                var candidatos = Candidatos(hermana, renglon);
+                if (posicion < 0 || posicion >= candidatos.Count) continue;
+
+                var origen = candidatos[posicion];
+                renglon.CantidadDisponible = Math.Min(origen.CantidadDisponible, renglon.Cantidad);
+                foreach (var despacho in origen.DespachosRemision)
+                    renglon.DespachosRemision.Add(new RemisionRenglon
+                    {
+                        NumeroRemision = despacho.NumeroRemision,
+                        Fecha = despacho.Fecha,
+                        CantidadRemisionada = despacho.CantidadRemisionada
+                    });
+            }
+        }
+    }
 
     private static void ValidarCamposRequeridos(IEnumerable<CampoTipoDocumento> campos, Dictionary<string, string>? datos)
     {
