@@ -10,4 +10,6 @@ public record LoginResponseDto(string Token, string Nombre, string Email, IReadO
     // Ídem para el control de alistamiento — ver Rol.PuedeGestionarAlistamiento/PuedeVerAlistamiento.
     // Alcanza con cualquiera de los dos para ver el dashboard; solo el primero habilita editar.
     bool PuedeGestionarAlistamiento,
-    bool PuedeVerAlistamiento);
+    bool PuedeVerAlistamiento,
+    // Módulo de Cuentas por Pagar — ver Rol.PuedeVerCuentasPorPagar.
+    bool PuedeVerCuentasPorPagar);

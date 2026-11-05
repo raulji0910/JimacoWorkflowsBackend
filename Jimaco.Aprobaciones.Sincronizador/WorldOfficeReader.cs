@@ -334,4 +334,77 @@ public class WorldOfficeReader(string connectionString)
         var filas = await conexion.QueryAsync<CuentaContableRow>(comando);
         return filas.ToList();
     }
+
+    /// <summary>
+    /// Cuentas por pagar abiertas (2026-11-05) desde <c>Vista_CuentasPorPagar_Detallada</c> — la vista
+    /// de World Office que ya descuenta los abonos (una factura pagada del todo no aparece), así que
+    /// no se recalcula nada acá. Solo las cuentas cuyo código empieza por alguno de
+    /// <paramref name="prefijosCuenta"/> (ej. 2205 proveedores nacionales, 2210 del exterior, 2335
+    /// costos y gastos por pagar) — la vista también trae bancos, socios, nómina y anticipos de
+    /// clientes, que no son pagos a proveedores. Se usan las columnas sin tilde, que la vista trae
+    /// duplicadas (<c>DocumentoNumero</c>, <c>NumDocumentoExterno</c>, <c>CodigoCuentaContable</c>).
+    /// </summary>
+    public async Task<IReadOnlyList<PartidaCuentaPorPagarRow>> ObtenerCuentasPorPagarAsync(IReadOnlyList<string> prefijosCuenta, CancellationToken ct = default)
+    {
+        if (prefijosCuenta.Count == 0) return [];
+
+        var parametros = new DynamicParameters();
+        var condiciones = prefijosCuenta.Select((prefijo, i) =>
+        {
+            parametros.Add($"C{i}", prefijo + "%");
+            return $"CodigoCuentaContable LIKE @C{i}";
+        }).ToList();
+
+        var sql = $"""
+            SELECT
+                AbonaADocumento,
+                Identificacion,
+                Nombres_terceros     AS NombresTerceros,
+                Documento,
+                prefijo              AS Prefijo,
+                DocumentoNumero,
+                NumDocumentoExterno,
+                Fecha,
+                Vencimiento,
+                Saldo,
+                CodigoCuentaContable
+            FROM Vista_CuentasPorPagar_Detallada
+            WHERE Saldo <> 0 AND ({string.Join(" OR ", condiciones)});
+            """;
+
+        await using var conexion = new SqlConnection(connectionString);
+        var comando = new CommandDefinition(sql, parametros, cancellationToken: ct);
+        var filas = await conexion.QueryAsync<PartidaCuentaPorPagarRow>(comando);
+        return filas.ToList();
+    }
+
+    /// <summary>
+    /// Anticipos a proveedores sin cruzar (2026-11-05): saldo Débito − Crédito de la cuenta de
+    /// anticipos (<paramref name="prefijoCuenta"/>, ej. 133005 "A PROVEEDORES") por tercero, solo
+    /// documentos no anulados. Está FUERA de la vista de cuentas por pagar (es una cuenta de activo),
+    /// pero es plata que ya salió — el módulo la muestra al lado para ver el neto real a pagar.
+    /// <c>Terceros</c> no tiene una columna de nombre completo: se arma con Nombre + Apellidos.
+    /// </summary>
+    public async Task<IReadOnlyList<AnticipoProveedorRow>> ObtenerAnticiposProveedorAsync(string prefijoCuenta, CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT
+                t.Identificacion,
+                LTRIM(RTRIM(ISNULL(t.Nombre, '') + ' ' + ISNULL(t.Apellidos, ''))) AS NombreTercero,
+                COUNT(*)                     AS Movimientos,
+                SUM(d.Débito - d.Crédito)    AS Saldo
+            FROM [CuentasContables - Asientos - Detalles] d
+            JOIN [CuentasContables - Asientos] a ON a.IdAsientoContable = d.IdAsientoContable
+            JOIN Terceros t ON t.IdTercero = d.IdTercero
+            WHERE (a.senAnulado = 0 OR a.senAnulado IS NULL)
+              AND d.IdCuentaContable IN (SELECT IdCuentaContable FROM CuentasContables WHERE CódigoCuentaContable LIKE @Cuenta)
+            GROUP BY t.Identificacion, t.Nombre, t.Apellidos
+            HAVING SUM(d.Débito - d.Crédito) <> 0;
+            """;
+
+        await using var conexion = new SqlConnection(connectionString);
+        var comando = new CommandDefinition(sql, new { Cuenta = prefijoCuenta + "%" }, cancellationToken: ct);
+        var filas = await conexion.QueryAsync<AnticipoProveedorRow>(comando);
+        return filas.ToList();
+    }
 }

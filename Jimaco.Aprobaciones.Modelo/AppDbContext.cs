@@ -40,6 +40,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<RemisionRenglon> RemisionesRenglon => Set<RemisionRenglon>();
     public DbSet<ComprobanteEgreso> ComprobantesEgreso => Set<ComprobanteEgreso>();
     public DbSet<RenglonComprobanteEgreso> RenglonesComprobanteEgreso => Set<RenglonComprobanteEgreso>();
+    public DbSet<PartidaCuentaPorPagar> PartidasCuentaPorPagar => Set<PartidaCuentaPorPagar>();
+    public DbSet<AnticipoProveedor> AnticiposProveedor => Set<AnticipoProveedor>();
+    public DbSet<SincronizacionCuentasPorPagar> SincronizacionesCuentasPorPagar => Set<SincronizacionCuentasPorPagar>();
+    public DbSet<FacturaPagoProveedor> FacturasPagoProveedor => Set<FacturaPagoProveedor>();
 
     /// <summary>Id fijo del rol sembrado en la migración inicial — útil para lógica de arranque (ver SeedAdminAsync en Program.cs).</summary>
     public const int RolAdminId = 1;
@@ -299,6 +303,37 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasOne(r => r.ComprobanteEgreso)
                 .WithMany(c => c.Renglones)
                 .HasForeignKey(r => r.ComprobanteEgresoId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ---- Cuentas por pagar (2026-11-05) — Fecha/Vencimiento son fechas de calendario de WO
+        // (sin hora, sin zona), igual que DocumentoVinculado.Fecha: sin conversión UTC. ----
+        modelBuilder.Entity<PartidaCuentaPorPagar>(e =>
+        {
+            e.Property(p => p.Pendiente).HasPrecision(18, 2);
+            e.HasIndex(p => p.Identificacion);
+            e.HasIndex(p => p.IdDocumentoDetalleWO);
+        });
+
+        modelBuilder.Entity<AnticipoProveedor>(e =>
+        {
+            e.Property(a => a.Saldo).HasPrecision(18, 2);
+            e.HasIndex(a => a.Identificacion);
+        });
+
+        modelBuilder.Entity<SincronizacionCuentasPorPagar>(e =>
+        {
+            e.Property(s => s.FechaCorte).HasConversion(ConversorFechaUtc);
+        });
+
+        modelBuilder.Entity<FacturaPagoProveedor>(e =>
+        {
+            e.Property(f => f.Valor).HasPrecision(18, 2);
+            e.HasIndex(f => f.IdDocumentoDetalleWO);
+
+            e.HasOne(f => f.InstanciaDocumento)
+                .WithMany(i => i.FacturasPagoProveedor)
+                .HasForeignKey(f => f.InstanciaDocumentoId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

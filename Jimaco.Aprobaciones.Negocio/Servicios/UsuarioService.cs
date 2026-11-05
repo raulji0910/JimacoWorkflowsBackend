@@ -43,7 +43,7 @@ public class UsuarioService(AppDbContext db) : IUsuarioService
         await db.SaveChangesAsync(ct);
 
         return new UsuarioDto(usuario.Id, usuario.Nombre, usuario.Email, usuario.Telefono, usuario.UsuarioWO, usuario.Activo,
-            roles.Select(r => new RolDto(r.Id, r.Nombre, r.Descripcion, r.Activo, r.PuedeDevolverCualquierDocumento, r.PuedeGestionarAlistamiento, r.PuedeVerAlistamiento)).ToList(),
+            roles.Select(r => new RolDto(r.Id, r.Nombre, r.Descripcion, r.Activo, r.PuedeDevolverCualquierDocumento, r.PuedeGestionarAlistamiento, r.PuedeVerAlistamiento, r.PuedeVerCuentasPorPagar)).ToList(),
             usuario.NombresCompletosWO);
     }
 
@@ -77,7 +77,7 @@ public class UsuarioService(AppDbContext db) : IUsuarioService
         await db.SaveChangesAsync(ct);
 
         return new UsuarioDto(usuario.Id, usuario.Nombre, usuario.Email, usuario.Telefono, usuario.UsuarioWO, usuario.Activo,
-            roles.Select(r => new RolDto(r.Id, r.Nombre, r.Descripcion, r.Activo, r.PuedeDevolverCualquierDocumento, r.PuedeGestionarAlistamiento, r.PuedeVerAlistamiento)).ToList(),
+            roles.Select(r => new RolDto(r.Id, r.Nombre, r.Descripcion, r.Activo, r.PuedeDevolverCualquierDocumento, r.PuedeGestionarAlistamiento, r.PuedeVerAlistamiento, r.PuedeVerCuentasPorPagar)).ToList(),
             usuario.NombresCompletosWO);
     }
 
@@ -114,6 +114,6 @@ public class UsuarioService(AppDbContext db) : IUsuarioService
 
     private static UsuarioDto MapearDto(Usuario u) => new(
         u.Id, u.Nombre, u.Email, u.Telefono, u.UsuarioWO, u.Activo,
-        u.UsuarioRoles.Select(ur => new RolDto(ur.Rol.Id, ur.Rol.Nombre, ur.Rol.Descripcion, ur.Rol.Activo, ur.Rol.PuedeDevolverCualquierDocumento, ur.Rol.PuedeGestionarAlistamiento, ur.Rol.PuedeVerAlistamiento)).ToList(),
+        u.UsuarioRoles.Select(ur => new RolDto(ur.Rol.Id, ur.Rol.Nombre, ur.Rol.Descripcion, ur.Rol.Activo, ur.Rol.PuedeDevolverCualquierDocumento, ur.Rol.PuedeGestionarAlistamiento, ur.Rol.PuedeVerAlistamiento, ur.Rol.PuedeVerCuentasPorPagar)).ToList(),
         u.NombresCompletosWO);
 }

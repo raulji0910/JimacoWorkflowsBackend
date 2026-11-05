@@ -15,7 +15,8 @@ namespace Jimaco.Aprobaciones.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class SincronizacionController(IInstanciaDocumentoService instanciaService, IHojaAlistamientoService hojaAlistamientoService) : ControllerBase
+public class SincronizacionController(IInstanciaDocumentoService instanciaService, IHojaAlistamientoService hojaAlistamientoService,
+    ICuentasPorPagarService cuentasPorPagarService) : ControllerBase
 {
     [HttpGet("pendientes-wo")]
     public async Task<ActionResult<IReadOnlyList<PendienteEscrituraWODto>>> ListarPendientesWO(CancellationToken ct) =>
@@ -87,6 +88,15 @@ public class SincronizacionController(IInstanciaDocumentoService instanciaServic
     public async Task<IActionResult> CrearHojaAlistamientoSinOc(DocumentoVinculadoInputDto dto, CancellationToken ct)
     {
         await hojaAlistamientoService.CrearSinOcAsync(dto, ct);
+        return Ok();
+    }
+
+    // ---- Cuentas por pagar (2026-11-05) — foto completa de WO, reemplaza la anterior. ----
+
+    [HttpPost("cuentas-por-pagar")]
+    public async Task<IActionResult> GuardarCuentasPorPagar(FotoCuentasPorPagarDto dto, CancellationToken ct)
+    {
+        await cuentasPorPagarService.GuardarFotoAsync(dto, ct);
         return Ok();
     }
 }

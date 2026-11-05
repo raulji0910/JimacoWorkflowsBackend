@@ -13,7 +13,7 @@ public class RolService(AppDbContext db) : IRolService
             .OrderBy(r => r.Nombre)
             .Select(r => new RolDto(
                 r.Id, r.Nombre, r.Descripcion, r.Activo,
-                r.PuedeDevolverCualquierDocumento, r.PuedeGestionarAlistamiento, r.PuedeVerAlistamiento))
+                r.PuedeDevolverCualquierDocumento, r.PuedeGestionarAlistamiento, r.PuedeVerAlistamiento, r.PuedeVerCuentasPorPagar))
             .ToListAsync(ct);
 
     public async Task<RolDto> CrearAsync(CrearRolDto dto, CancellationToken ct = default)
@@ -28,7 +28,8 @@ public class RolService(AppDbContext db) : IRolService
             Activo = true,
             PuedeDevolverCualquierDocumento = dto.PuedeDevolverCualquierDocumento,
             PuedeGestionarAlistamiento = dto.PuedeGestionarAlistamiento,
-            PuedeVerAlistamiento = dto.PuedeVerAlistamiento
+            PuedeVerAlistamiento = dto.PuedeVerAlistamiento,
+            PuedeVerCuentasPorPagar = dto.PuedeVerCuentasPorPagar
         };
         db.Roles.Add(rol);
         await db.SaveChangesAsync(ct);
@@ -50,6 +51,7 @@ public class RolService(AppDbContext db) : IRolService
         rol.PuedeDevolverCualquierDocumento = dto.PuedeDevolverCualquierDocumento;
         rol.PuedeGestionarAlistamiento = dto.PuedeGestionarAlistamiento;
         rol.PuedeVerAlistamiento = dto.PuedeVerAlistamiento;
+        rol.PuedeVerCuentasPorPagar = dto.PuedeVerCuentasPorPagar;
         await db.SaveChangesAsync(ct);
 
         return MapearDto(rol);
@@ -57,5 +59,5 @@ public class RolService(AppDbContext db) : IRolService
 
     private static RolDto MapearDto(Rol rol) => new(
         rol.Id, rol.Nombre, rol.Descripcion, rol.Activo,
-        rol.PuedeDevolverCualquierDocumento, rol.PuedeGestionarAlistamiento, rol.PuedeVerAlistamiento);
+        rol.PuedeDevolverCualquierDocumento, rol.PuedeGestionarAlistamiento, rol.PuedeVerAlistamiento, rol.PuedeVerCuentasPorPagar);
 }

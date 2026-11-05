@@ -20,6 +20,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IDefinicionFlujoService, DefinicionFlujoService>();
         services.AddScoped<IInstanciaDocumentoService, InstanciaDocumentoService>();
         services.AddScoped<IHojaAlistamientoService, HojaAlistamientoService>();
+        services.AddScoped<ICuentasPorPagarService, CuentasPorPagarService>();
         services.AddSingleton<IDocumentoPdfGenerador, DocumentoPdfGenerador>();
         return services;
     }

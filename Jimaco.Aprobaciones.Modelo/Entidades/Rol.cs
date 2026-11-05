@@ -47,6 +47,14 @@ public class Rol
     /// </summary>
     public bool PuedeVerAlistamiento { get; set; }
 
+    /// <summary>
+    /// Módulo de Cuentas por Pagar (2026-11-05): ver el estado de lo que se les debe a los
+    /// proveedores (foto de World Office) y decidir qué facturas se mandan a pagar — pensado para
+    /// Gerencia Comercial. Cada decisión crea un documento "Pago a Proveedor" que sigue el flujo
+    /// normal (Contabilidad genera el CEJ, Gerencia General paga).
+    /// </summary>
+    public bool PuedeVerCuentasPorPagar { get; set; }
+
     public ICollection<UsuarioRol> UsuarioRoles { get; set; } = [];
     public ICollection<PasoFlujoRol> PasoFlujoRoles { get; set; } = [];
 }

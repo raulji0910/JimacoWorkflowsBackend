@@ -138,4 +138,7 @@ public class InstanciaDocumento
     public ICollection<HistorialAccion> Historial { get; set; } = [];
     public ICollection<RenglonInstanciaDocumento> Renglones { get; set; } = [];
     public ICollection<DocumentoVinculado> DocumentosVinculados { get; set; } = [];
+
+    /// <summary>Solo en documentos "Pago a Proveedor": las partidas de WO que se mandaron a pagar.</summary>
+    public ICollection<FacturaPagoProveedor> FacturasPagoProveedor { get; set; } = [];
 }

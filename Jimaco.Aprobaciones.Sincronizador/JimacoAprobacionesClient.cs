@@ -129,6 +129,20 @@ public class JimacoAprobacionesClient(HttpClient http, string email, string pass
         await LanzarSiErrorAsync(response, ct);
     }
 
+    public async Task EnviarCuentasPorPagarAsync(FotoCuentasPorPagarDto foto, CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "api/sincronizacion/cuentas-por-pagar")
+        {
+            Content = JsonContent.Create(foto, options: JsonOpciones)
+        };
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+    }
+
     public async Task<IReadOnlyList<PendienteRemisionDto>> ListarPendientesRemisionAsync(CancellationToken ct = default)
     {
         await AsegurarTokenAsync(ct);

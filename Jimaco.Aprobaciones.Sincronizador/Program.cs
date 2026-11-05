@@ -462,6 +462,49 @@ foreach (var cot in cotizacionesRecientes)
     }
 }
 
+// ---- Cuentas por pagar (2026-11-05) — foto completa en cada corrida (no hay marca de agua: lo que
+// importa es el saldo de HOY, y la vista de WO ya descuenta los abonos). Son pocas cientos de filas,
+// la Api reemplaza la foto anterior entera. Solo lectura, misma connection string que el resto. Un
+// error acá no frena nada más: la pantalla sigue mostrando la foto anterior con su hora de corte. ----
+if (bool.TryParse(config["CuentasPorPagar:Activo"], out var cxpActivo) && !cxpActivo)
+{
+    Console.WriteLine($"[{DateTime.Now:s}] CuentasPorPagar:Activo=false — se omiten las cuentas por pagar.");
+}
+else
+{
+    try
+    {
+        var prefijosCuenta = (config["CuentasPorPagar:PrefijosCuenta"] ?? "2205,2210,2335")
+            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        var cuentaAnticipos = config["CuentasPorPagar:CuentaAnticipos"] ?? "133005";
+
+        var partidasCxp = await lector.ObtenerCuentasPorPagarAsync(prefijosCuenta);
+        var anticiposCxp = string.IsNullOrWhiteSpace(cuentaAnticipos) ? [] : await lector.ObtenerAnticiposProveedorAsync(cuentaAnticipos);
+
+        await jimaco.EnviarCuentasPorPagarAsync(new FotoCuentasPorPagarDto(
+            Partidas: partidasCxp.Select(p => new PartidaCuentaPorPagarInputDto(
+                IdDocumentoDetalleWO: p.AbonaADocumento,
+                Identificacion: p.Identificacion ?? "",
+                NombreTercero: p.NombresTerceros ?? "",
+                Documento: p.Documento,
+                Prefijo: p.Prefijo,
+                NumeroDocumento: p.DocumentoNumero?.ToString("0"),
+                NumeroDocumentoExterno: p.NumDocumentoExterno,
+                Fecha: p.Fecha,
+                Vencimiento: p.Vencimiento,
+                SaldoWO: p.Saldo,
+                CodigoCuenta: p.CodigoCuentaContable)).ToList(),
+            Anticipos: anticiposCxp.Select(a => new AnticipoProveedorInputDto(
+                a.Identificacion ?? "", a.NombreTercero ?? "", a.Movimientos, a.Saldo)).ToList()));
+
+        Console.WriteLine($"[{DateTime.Now:s}] Cuentas por pagar: {partidasCxp.Count} partida(s) en {string.Join("/", prefijosCuenta)}, {anticiposCxp.Count} tercero(s) con anticipos sin cruzar.");
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"[{DateTime.Now:s}] ERROR enviando cuentas por pagar: {ex.Message}");
+    }
+}
+
 Console.WriteLine($"[{DateTime.Now:s}] Listo.");
 
 // Texto libre escrito a mano ("16113", "COT16113"...) normalizado a la misma forma canónica que
