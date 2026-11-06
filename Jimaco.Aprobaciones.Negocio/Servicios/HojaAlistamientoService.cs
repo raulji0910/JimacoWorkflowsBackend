@@ -317,10 +317,19 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
             cantidadPorCodigo[renglonRemision.Codigo] = cantidadPorCodigo.GetValueOrDefault(renglonRemision.Codigo) + renglonRemision.Cantidad;
         }
 
-        foreach (var (codigo, cantidadTotal) in cantidadPorCodigo)
+        // Bug real de producción (2026-11-06, Hoja 16372): la Remisión 29413 se editó en WO después de
+        // aplicada y le quitaron el ítem PJ-4691 — pero acá solo se recorrían los códigos que la
+        // Remisión TRAE, así que el despacho viejo de ese ítem quedaba para siempre ("29413 (7/7)"
+        // en un ítem que en WO sigue pendiente). Ahora se recorren TODOS los códigos de la Hoja: los
+        // que la Remisión ya no trae reciben 0 y su despacho de esta Remisión se borra. Mismo motivo
+        // para no cortar el reparto apenas se agota la cantidad: un renglón repetido que antes
+        // recibía algo y ahora no, también tiene que quedar en 0.
+        var codigosHoja = copia.Renglones.Where(r => r.Codigo is not null).Select(r => r.Codigo!).Distinct().ToList();
+
+        foreach (var codigo in codigosHoja)
         {
             var renglones = copia.Renglones.Where(r => r.Codigo == codigo).OrderBy(r => r.Orden).ToList();
-            if (renglones.Count == 0) continue; // la Remisión trae un código que esta Hoja no tiene — no hay con qué cruzar
+            var cantidadTotal = cantidadPorCodigo.GetValueOrDefault(codigo);
 
             var restante = cantidadTotal;
             foreach (var renglon in renglones)
@@ -336,7 +345,9 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
                 var capacidad = Math.Max(0, renglon.Cantidad - yaDespachadoPorOtras);
                 var aplicar = Math.Min(restante, capacidad);
 
-                if (despachoExistente is not null)
+                if (despachoExistente is not null && aplicar <= 0)
+                    renglon.DespachosRemision.Remove(despachoExistente);
+                else if (despachoExistente is not null)
                     despachoExistente.CantidadRemisionada = aplicar;
                 else if (aplicar > 0)
                     renglon.DespachosRemision.Add(new RemisionRenglon
@@ -347,7 +358,6 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
                     });
 
                 restante -= aplicar;
-                if (restante <= 0) break;
             }
         }
     }
