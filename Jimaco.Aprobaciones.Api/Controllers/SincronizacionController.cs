@@ -99,4 +99,24 @@ public class SincronizacionController(IInstanciaDocumentoService instanciaServic
         await cuentasPorPagarService.GuardarFotoAsync(dto, ct);
         return Ok();
     }
+
+    // ---- Creación del CE en WO para pagos a proveedor confirmados (2026-11-06). ----
+
+    [HttpGet("pagos-proveedor/pendientes-ce")]
+    public async Task<ActionResult<IReadOnlyList<PendienteCreacionCEDto>>> ListarPendientesCreacionCE(CancellationToken ct) =>
+        Ok(await cuentasPorPagarService.ListarPendientesCreacionCEAsync(ct));
+
+    [HttpPost("pagos-proveedor/{id:int}/ce-creado")]
+    public async Task<IActionResult> ConfirmarCECreado(int id, CECreadoDto dto, CancellationToken ct)
+    {
+        await cuentasPorPagarService.ConfirmarCECreadoAsync(id, dto, ct);
+        return Ok();
+    }
+
+    [HttpPost("pagos-proveedor/{id:int}/conflicto")]
+    public async Task<IActionResult> ReportarConflictoCreacionCE(int id, ReportarConflictoWODto dto, CancellationToken ct)
+    {
+        await cuentasPorPagarService.ReportarConflictoCreacionCEAsync(id, dto.Mensaje, ct);
+        return Ok();
+    }
 }

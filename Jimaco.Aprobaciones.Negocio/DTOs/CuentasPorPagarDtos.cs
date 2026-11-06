@@ -16,12 +16,30 @@ public record PartidaCuentaPorPagarInputDto(
     decimal SaldoWO,
     string? CodigoCuenta);
 
-/// <summary>Saldo sin cruzar de anticipos a un tercero (Débito − Crédito de la cuenta de anticipos).</summary>
-public record AnticipoProveedorInputDto(string Identificacion, string NombreTercero, int Movimientos, decimal Saldo);
+/// <summary>
+/// Un anticipo sin cruzar (cuenta de anticipos), por partida: <see cref="IdDocumentoDetalleWO"/> es
+/// el renglón que lo abrió y <see cref="Saldo"/> lo que le queda (Débito − Crédito de todos los
+/// renglones que apuntan a él). Prefijo/número/fecha/nota son del documento de origen.
+/// </summary>
+public record AnticipoProveedorInputDto(
+    string Identificacion,
+    string NombreTercero,
+    int Movimientos,
+    decimal Saldo,
+    int? IdDocumentoDetalleWO = null,
+    string? Prefijo = null,
+    string? NumeroDocumento = null,
+    DateTime? Fecha = null,
+    string? Nota = null);
+
+/// <summary>Una cuenta de banco/caja de WO desde donde se puede pagar.</summary>
+public record CuentaBancoInputDto(int IdCuentaContableWO, string Codigo, string Nombre, bool PorDefecto);
 
 public record FotoCuentasPorPagarDto(
     IReadOnlyList<PartidaCuentaPorPagarInputDto> Partidas,
-    IReadOnlyList<AnticipoProveedorInputDto> Anticipos);
+    IReadOnlyList<AnticipoProveedorInputDto> Anticipos,
+    // Null = el Sincronizador es de una versión vieja que no la manda: se conserva la lista anterior.
+    IReadOnlyList<CuentaBancoInputDto>? Bancos = null);
 
 // ---- Lo que ve la pantalla ----
 
@@ -82,13 +100,70 @@ public record PartidaCuentaPorPagarDto(
     int? PagoInstanciaDocumentoId,
     string? PagoNumeroReferencia);
 
+/// <summary>Un anticipo abierto del proveedor, para elegir si se descuenta en el pago.</summary>
+public record AnticipoPartidaDto(
+    int? IdDocumentoDetalleWO,
+    string? Prefijo,
+    string? NumeroDocumento,
+    DateTime? Fecha,
+    string? Nota,
+    decimal Saldo,
+    // Disponible / EnTramite (ya está en otro pago) / PagadaPendienteCruce / NoPagable (sin partida de origen).
+    EstadoPartidaCuentaPorPagar Estado,
+    int? PagoInstanciaDocumentoId,
+    string? PagoNumeroReferencia);
+
 public record DetalleProveedorCuentaPorPagarDto(
     DateTime? FechaCorte,
     ProveedorCuentaPorPagarDto Proveedor,
     IReadOnlyList<PartidaCuentaPorPagarDto> Partidas,
-    int AnticiposMovimientos);
+    int AnticiposMovimientos,
+    IReadOnlyList<AnticipoPartidaDto> Anticipos);
 
-public record CrearPagoProveedorDto(string Identificacion, IReadOnlyList<int> IdsDocumentoDetalleWO, string? Observaciones);
+public record CrearPagoProveedorDto(
+    string Identificacion,
+    IReadOnlyList<int> IdsDocumentoDetalleWO,
+    string? Observaciones,
+    // Anticipos a descontar en el mismo CE (se aplican del más viejo al más nuevo, hasta cubrir las facturas).
+    IReadOnlyList<int>? IdsAnticiposWO = null);
+
+public record CuentaBancoDto(int IdCuentaContableWO, string Codigo, string Nombre, bool PorDefecto);
+
+public record AnticipoPagoProveedorDto(int IdDocumentoDetalleWO, string? Prefijo, string? NumeroDocumento, DateTime? Fecha, string? Nota, decimal Valor);
+
+/// <summary>Lo que se ve en el detalle de un documento "Pago a Proveedor" sobre el pago real y su CE en WO.</summary>
+public record PagoProveedorDto(
+    string Identificacion,
+    decimal TotalFacturas,
+    decimal TotalAnticipos,
+    decimal Neto,
+    IReadOnlyList<AnticipoPagoProveedorDto> Anticipos,
+    int? IdCuentaBancoWO,
+    string? NombreBanco,
+    DateTime? FechaPago,
+    bool PendienteCreacionCE,
+    string? ConflictoCreacionCE,
+    string? PrefijoCE,
+    decimal? NumeroCE,
+    DateTime? FechaCreacionCE);
+
+// ---- Creación del CE en WO (lo usa solo el Sincronizador) ----
+
+public record FacturaCreacionCEDto(int IdDocumentoDetalleWO, string? Prefijo, string? NumeroDocumento, string? NumeroDocumentoExterno, decimal Valor);
+
+public record AnticipoCreacionCEDto(int IdDocumentoDetalleWO, string? Prefijo, string? NumeroDocumento, decimal Valor);
+
+public record PendienteCreacionCEDto(
+    int InstanciaDocumentoId,
+    string? NumeroReferencia,
+    string Identificacion,
+    DateTime FechaPago,
+    int? IdCuentaBancoWO,
+    decimal Neto,
+    IReadOnlyList<FacturaCreacionCEDto> Facturas,
+    IReadOnlyList<AnticipoCreacionCEDto> Anticipos);
+
+public record CECreadoDto(string Prefijo, decimal Numero, int IdAsientoContable);
 
 /// <summary>Facturas incluidas en un documento "Pago a Proveedor" — para mostrarlas en su detalle.</summary>
 public record FacturaPagoProveedorDto(

@@ -19,11 +19,16 @@ public class PartidaCuentaPorPagarRow
     public string? CodigoCuentaContable { get; set; }
 }
 
-/// <summary>Saldo sin cruzar de la cuenta de anticipos a proveedores, por tercero.</summary>
+/// <summary>Un anticipo a proveedor sin cruzar, por partida (renglón de origen + lo que le queda).</summary>
 public class AnticipoProveedorRow
 {
+    public int IdDocumentoDetalle { get; set; }
     public string? Identificacion { get; set; }
     public string? NombreTercero { get; set; }
     public int Movimientos { get; set; }
     public decimal Saldo { get; set; }
+    public string? Prefijo { get; set; }
+    public decimal? DocumentoNumero { get; set; }
+    public DateTime? Fecha { get; set; }
+    public string? Nota { get; set; }
 }

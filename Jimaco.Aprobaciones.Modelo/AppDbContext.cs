@@ -44,6 +44,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<AnticipoProveedor> AnticiposProveedor => Set<AnticipoProveedor>();
     public DbSet<SincronizacionCuentasPorPagar> SincronizacionesCuentasPorPagar => Set<SincronizacionCuentasPorPagar>();
     public DbSet<FacturaPagoProveedor> FacturasPagoProveedor => Set<FacturaPagoProveedor>();
+    public DbSet<AnticipoPagoProveedor> AnticiposPagoProveedor => Set<AnticipoPagoProveedor>();
+    public DbSet<CuentaBancoWO> CuentasBancoWO => Set<CuentaBancoWO>();
+    public DbSet<PagoProveedor> PagosProveedor => Set<PagoProveedor>();
 
     /// <summary>Id fijo del rol sembrado en la migración inicial — útil para lógica de arranque (ver SeedAdminAsync en Program.cs).</summary>
     public const int RolAdminId = 1;
@@ -319,6 +322,37 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             e.Property(a => a.Saldo).HasPrecision(18, 2);
             e.HasIndex(a => a.Identificacion);
+            e.HasIndex(a => a.IdDocumentoDetalleWO);
+        });
+
+        modelBuilder.Entity<CuentaBancoWO>(e =>
+        {
+            e.HasIndex(b => b.IdCuentaContableWO).IsUnique();
+        });
+
+        modelBuilder.Entity<AnticipoPagoProveedor>(e =>
+        {
+            e.Property(a => a.Valor).HasPrecision(18, 2);
+            e.Property(a => a.SaldoAnterior).HasPrecision(18, 2);
+            e.HasIndex(a => a.IdDocumentoDetalleWO);
+
+            e.HasOne(a => a.InstanciaDocumento)
+                .WithMany(i => i.AnticiposPagoProveedor)
+                .HasForeignKey(a => a.InstanciaDocumentoId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PagoProveedor>(e =>
+        {
+            e.Property(p => p.NumeroCE).HasPrecision(20, 0);
+            e.Property(p => p.FechaCreacionCE).HasConversion(ConversorFechaUtcNullable);
+            e.HasIndex(p => p.InstanciaDocumentoId).IsUnique();
+            e.HasIndex(p => p.PendienteCreacionCE);
+
+            e.HasOne(p => p.InstanciaDocumento)
+                .WithOne(i => i.PagoProveedor)
+                .HasForeignKey<PagoProveedor>(p => p.InstanciaDocumentoId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<SincronizacionCuentasPorPagar>(e =>

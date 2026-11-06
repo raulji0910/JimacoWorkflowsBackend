@@ -379,32 +379,73 @@ public class WorldOfficeReader(string connectionString)
     }
 
     /// <summary>
-    /// Anticipos a proveedores sin cruzar (2026-11-05): saldo Débito − Crédito de la cuenta de
-    /// anticipos (<paramref name="prefijoCuenta"/>, ej. 133005 "A PROVEEDORES") por tercero, solo
-    /// documentos no anulados. Está FUERA de la vista de cuentas por pagar (es una cuenta de activo),
-    /// pero es plata que ya salió — el módulo la muestra al lado para ver el neto real a pagar.
-    /// <c>Terceros</c> no tiene una columna de nombre completo: se arma con Nombre + Apellidos.
+    /// Anticipos a proveedores sin cruzar, POR PARTIDA (2026-11-06; antes era un total por tercero):
+    /// cada anticipo es un renglón de la cuenta de anticipos (<paramref name="prefijoCuenta"/>, ej.
+    /// 133005) que se autorreferencia en <c>AbonaADocumento</c>, y los cruces posteriores apuntan a
+    /// ese mismo Id — agrupando por <c>AbonaADocumento</c> sale lo que le queda a cada uno (confirmado
+    /// contra WO real, ronda 4 de exploracion-crear-ce-wo). Los movimientos sin <c>AbonaADocumento</c>
+    /// (4 en total al 2026-11-06, residuos para depurar) se ignoran: no se pueden cruzar. Prefijo,
+    /// número, fecha y nota salen del renglón de origen — la nota es lo que dice a qué OC corresponde.
     /// </summary>
     public async Task<IReadOnlyList<AnticipoProveedorRow>> ObtenerAnticiposProveedorAsync(string prefijoCuenta, CancellationToken ct = default)
     {
         const string sql = """
             SELECT
+                d.AbonaADocumento            AS IdDocumentoDetalle,
                 t.Identificacion,
                 LTRIM(RTRIM(ISNULL(t.Nombre, '') + ' ' + ISNULL(t.Apellidos, ''))) AS NombreTercero,
                 COUNT(*)                     AS Movimientos,
-                SUM(d.Débito - d.Crédito)    AS Saldo
+                SUM(d.Débito - d.Crédito)    AS Saldo,
+                MIN(o.prefijo)               AS Prefijo,
+                MIN(o.DocumentoNúmero)       AS DocumentoNumero,
+                MIN(o.Fecha)                 AS Fecha,
+                MIN(CAST(dor.Nota AS nvarchar(300))) AS Nota
             FROM [CuentasContables - Asientos - Detalles] d
             JOIN [CuentasContables - Asientos] a ON a.IdAsientoContable = d.IdAsientoContable
             JOIN Terceros t ON t.IdTercero = d.IdTercero
+            LEFT JOIN [CuentasContables - Asientos - Detalles] dor ON dor.IdDocumentoDetalle = d.AbonaADocumento
+            LEFT JOIN [CuentasContables - Asientos] o ON o.IdAsientoContable = dor.IdAsientoContable
             WHERE (a.senAnulado = 0 OR a.senAnulado IS NULL)
+              AND d.AbonaADocumento IS NOT NULL
               AND d.IdCuentaContable IN (SELECT IdCuentaContable FROM CuentasContables WHERE CódigoCuentaContable LIKE @Cuenta)
-            GROUP BY t.Identificacion, t.Nombre, t.Apellidos
+            GROUP BY d.AbonaADocumento, t.Identificacion, t.Nombre, t.Apellidos
             HAVING SUM(d.Débito - d.Crédito) <> 0;
             """;
 
         await using var conexion = new SqlConnection(connectionString);
         var comando = new CommandDefinition(sql, new { Cuenta = prefijoCuenta + "%" }, cancellationToken: ct);
         var filas = await conexion.QueryAsync<AnticipoProveedorRow>(comando);
+        return filas.ToList();
+    }
+
+    /// <summary>
+    /// Cuentas de banco/caja desde donde se paga a proveedores (2026-11-06): en WO no hay una tabla de
+    /// bancos aparte — cada banco es una cuenta contable hoja y activa (ej. 11100502 BANCOLOMBIA CTA
+    /// CTE) bajo alguno de <paramref name="prefijosCuenta"/> (1105 caja, 1110 bancos).
+    /// </summary>
+    public async Task<IReadOnlyList<CuentaContableRow>> ObtenerCuentasBancoAsync(IReadOnlyList<string> prefijosCuenta, CancellationToken ct = default)
+    {
+        if (prefijosCuenta.Count == 0) return [];
+
+        var parametros = new DynamicParameters();
+        var condiciones = prefijosCuenta.Select((prefijo, i) =>
+        {
+            parametros.Add($"C{i}", prefijo + "%");
+            return $"c.CódigoCuentaContable LIKE @C{i}";
+        }).ToList();
+
+        var sql = $"""
+            SELECT c.IdCuentaContable, c.CódigoCuentaContable AS CodigoCuentaContable, c.CuentaContable
+            FROM CuentasContables c
+            WHERE ({string.Join(" OR ", condiciones)})
+              AND ISNULL(c.Inactivo, 0) = 0
+              AND NOT EXISTS (SELECT 1 FROM CuentasContables h WHERE h.SubCuentaContableDe = c.IdCuentaContable)
+            ORDER BY c.CódigoCuentaContable;
+            """;
+
+        await using var conexion = new SqlConnection(connectionString);
+        var comando = new CommandDefinition(sql, parametros, cancellationToken: ct);
+        var filas = await conexion.QueryAsync<CuentaContableRow>(comando);
         return filas.ToList();
     }
 }

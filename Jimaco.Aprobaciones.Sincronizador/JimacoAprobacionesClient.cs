@@ -143,6 +143,47 @@ public class JimacoAprobacionesClient(HttpClient http, string email, string pass
         await LanzarSiErrorAsync(response, ct);
     }
 
+    public async Task<IReadOnlyList<PendienteCreacionCEDto>> ListarPendientesCreacionCEAsync(CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/sincronizacion/pagos-proveedor/pendientes-ce");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+
+        return (await response.Content.ReadFromJsonAsync<IReadOnlyList<PendienteCreacionCEDto>>(JsonOpciones, ct))!;
+    }
+
+    public async Task ConfirmarCECreadoAsync(int instanciaDocumentoId, CECreadoDto dto, CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"api/sincronizacion/pagos-proveedor/{instanciaDocumentoId}/ce-creado")
+        {
+            Content = JsonContent.Create(dto, options: JsonOpciones)
+        };
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+    }
+
+    public async Task ReportarConflictoCreacionCEAsync(int instanciaDocumentoId, string mensaje, CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"api/sincronizacion/pagos-proveedor/{instanciaDocumentoId}/conflicto")
+        {
+            Content = JsonContent.Create(new ReportarConflictoWODto(mensaje), options: JsonOpciones)
+        };
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+    }
+
     public async Task<IReadOnlyList<PendienteRemisionDto>> ListarPendientesRemisionAsync(CancellationToken ct = default)
     {
         await AsegurarTokenAsync(ct);

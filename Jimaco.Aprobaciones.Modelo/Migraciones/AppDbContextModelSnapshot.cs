@@ -65,6 +65,52 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.ToTable("Adjuntos");
                 });
 
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.AnticipoPagoProveedor", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("Fecha")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("IdDocumentoDetalleWO")
+                        .HasColumnType("int");
+
+                    b.Property<int>("InstanciaDocumentoId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Nota")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("NumeroDocumento")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Prefijo")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<decimal>("SaldoAnterior")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("Valor")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IdDocumentoDetalleWO");
+
+                    b.HasIndex("InstanciaDocumentoId");
+
+                    b.ToTable("AnticiposPagoProveedor");
+                });
+
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.AnticipoProveedor", b =>
                 {
                     b.Property<int>("Id")
@@ -72,6 +118,12 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("Fecha")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("IdDocumentoDetalleWO")
+                        .HasColumnType("int");
 
                     b.Property<string>("Identificacion")
                         .IsRequired()
@@ -86,11 +138,25 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                         .HasMaxLength(300)
                         .HasColumnType("nvarchar(300)");
 
+                    b.Property<string>("Nota")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("NumeroDocumento")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Prefijo")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<decimal>("Saldo")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("IdDocumentoDetalleWO");
 
                     b.HasIndex("Identificacion");
 
@@ -195,6 +261,38 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                         .IsUnique();
 
                     b.ToTable("ComprobantesEgreso");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.CuentaBancoWO", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Codigo")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("IdCuentaContableWO")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("PorDefecto")
+                        .HasColumnType("bit");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IdCuentaContableWO")
+                        .IsUnique();
+
+                    b.ToTable("CuentasBancoWO");
                 });
 
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.DefinicionFlujo", b =>
@@ -536,6 +634,63 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.HasIndex("UsuarioId");
 
                     b.ToTable("Notificaciones");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.PagoProveedor", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ConflictoCreacionCE")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime?>("FechaCreacionCE")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaPago")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("IdAsientoContableCE")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdCuentaBancoWO")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Identificacion")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<int>("InstanciaDocumentoId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("NombreBanco")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<decimal?>("NumeroCE")
+                        .HasPrecision(20)
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<bool>("PendienteCreacionCE")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("PrefijoCE")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InstanciaDocumentoId")
+                        .IsUnique();
+
+                    b.HasIndex("PendienteCreacionCE");
+
+                    b.ToTable("PagosProveedor");
                 });
 
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.PartidaCuentaPorPagar", b =>
@@ -1049,6 +1204,17 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Navigation("SubidoPorUsuario");
                 });
 
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.AnticipoPagoProveedor", b =>
+                {
+                    b.HasOne("Jimaco.Aprobaciones.Modelo.Entidades.InstanciaDocumento", "InstanciaDocumento")
+                        .WithMany("AnticiposPagoProveedor")
+                        .HasForeignKey("InstanciaDocumentoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("InstanciaDocumento");
+                });
+
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.CampoTipoDocumento", b =>
                 {
                     b.HasOne("Jimaco.Aprobaciones.Modelo.Entidades.TipoDocumento", "TipoDocumento")
@@ -1186,6 +1352,17 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Navigation("InstanciaDocumento");
 
                     b.Navigation("Usuario");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.PagoProveedor", b =>
+                {
+                    b.HasOne("Jimaco.Aprobaciones.Modelo.Entidades.InstanciaDocumento", "InstanciaDocumento")
+                        .WithOne("PagoProveedor")
+                        .HasForeignKey("Jimaco.Aprobaciones.Modelo.Entidades.PagoProveedor", "InstanciaDocumentoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("InstanciaDocumento");
                 });
 
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.PasoFlujo", b =>
@@ -1326,6 +1503,8 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                 {
                     b.Navigation("Adjuntos");
 
+                    b.Navigation("AnticiposPagoProveedor");
+
                     b.Navigation("ComprobanteEgreso");
 
                     b.Navigation("DocumentosVinculados");
@@ -1333,6 +1512,8 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Navigation("FacturasPagoProveedor");
 
                     b.Navigation("Historial");
+
+                    b.Navigation("PagoProveedor");
 
                     b.Navigation("Renglones");
                 });

@@ -30,7 +30,7 @@ public class CuentasPorPagarServiceTests
     {
         var reloj = new RelojFijo();
         var instancias = new InstanciaDocumentoService(db, Mock.Of<IAlmacenamientoArchivos>(), Mock.Of<INotificacionService>(), reloj);
-        return new CuentasPorPagarService(db, instancias, reloj);
+        return new CuentasPorPagarService(db, instancias, new Mock<INotificacionService>().Object, reloj);
     }
 
     /// <summary>Gerente comercial con el permiso + tipo "Pago a Proveedor" con flujo Contabilidad → Gerencia. Devuelve el Id del gerente.</summary>
@@ -177,6 +177,178 @@ public class CuentasPorPagarServiceTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => servicio.CrearPagoAsync(new("900", [1, 99], null), gerenteId));
         Assert.Empty(await db.InstanciasDocumento.ToListAsync());
+    }
+
+    // ---- 2026-11-06: anticipos por partida, confirmación del pago y creación del CE ----
+
+    /// <summary>Flujo de un solo paso: Gerencia General confirma el pago con soporte. Devuelve (gerente comercial, gerente general).</summary>
+    private async Task<(int Comercial, int General)> SembrarFlujoGerenciaGeneralAsync()
+    {
+        var rolComercial = new Rol { Nombre = "Gerencia Comercial", PuedeVerCuentasPorPagar = true };
+        var rolGeneral = new Rol { Nombre = "Gerencia General" };
+        var comercial = new Usuario { Nombre = "Comercial", Email = "comercial@test", PasswordHash = "x" };
+        var general = new Usuario { Nombre = "General", Email = "general@test", PasswordHash = "x" };
+        db.AddRange(rolComercial, rolGeneral, comercial, general);
+        await db.SaveChangesAsync();
+        db.UsuarioRoles.AddRange(
+            new UsuarioRol { UsuarioId = comercial.Id, RolId = rolComercial.Id },
+            new UsuarioRol { UsuarioId = general.Id, RolId = rolGeneral.Id });
+
+        var tipo = new TipoDocumento { Nombre = "Pago a Proveedor", PrefijoWorldOffice = CuentasPorPagarService.PrefijoPagoProveedor };
+        db.TiposDocumento.Add(tipo);
+        await db.SaveChangesAsync();
+
+        var paso = new PasoFlujo { Nombre = "Gerencia General", Orden = 1, PermiteRechazar = true, RequiereSoportePagoAlAprobar = true };
+        db.DefinicionesFlujo.Add(new DefinicionFlujo { Nombre = "Pago a proveedor", TipoDocumentoId = tipo.Id, Activo = true, Pasos = [paso] });
+        await db.SaveChangesAsync();
+        db.PasoFlujoRoles.Add(new PasoFlujoRol { PasoFlujoId = paso.Id, RolId = rolGeneral.Id });
+        db.CuentasBancoWO.AddRange(
+            new CuentaBancoWO { IdCuentaContableWO = 13650, Codigo = "11100502", Nombre = "BANCOLOMBIA CTA CTE", PorDefecto = true },
+            new CuentaBancoWO { IdCuentaContableWO = 13649, Codigo = "11100501", Nombre = "BANCO DE BOGOTA CTA CTE" });
+        await db.SaveChangesAsync();
+
+        return (comercial.Id, general.Id);
+    }
+
+    private static AnticipoProveedorInputDto Anticipo(int id, string nit, decimal saldo, int diasAtras, string nota = "ANTICIPO COMPRA OC 1") =>
+        new(nit, $"PROVEEDOR {nit}", 1, saldo, id, "CEJ", (15000 + id).ToString(), Hoy.AddDays(-diasAtras), nota);
+
+    private async Task<int> SubirSoporteAsync(int instanciaId)
+    {
+        var adjunto = new Adjunto { InstanciaDocumentoId = instanciaId, NombreArchivo = "soporte.pdf", ContentType = "application/pdf", RutaArchivo = "x" };
+        db.Adjuntos.Add(adjunto);
+        await db.SaveChangesAsync();
+        return adjunto.Id;
+    }
+
+    [Fact]
+    public async Task CrearPago_DescuentaAnticiposDelMasViejoAlMasNuevo_YElUltimoQuedaParcial()
+    {
+        var (comercial, _) = await SembrarFlujoGerenciaGeneralAsync();
+        var servicio = CrearServicio();
+        await servicio.GuardarFotoAsync(new(
+            [Factura(1, "900", -1000, 10), Factura(2, "900", -500, 0)],
+            [Anticipo(50, "900", 600, diasAtras: 30, "ANTICIPO OC 10"), Anticipo(51, "900", 2000, diasAtras: 5, "ANTICIPO OC 11")]));
+
+        var id = await servicio.CrearPagoAsync(new("900", [1, 2], null, [51, 50]), comercial);
+
+        var documento = await db.InstanciasDocumento.Include(i => i.Renglones).Include(i => i.AnticiposPagoProveedor).Include(i => i.PagoProveedor)
+            .SingleAsync(i => i.Id == id);
+        Assert.Equal(0, documento.Valor); // 1500 de facturas − 600 − 900 (parcial del segundo)
+        var anticipos = documento.AnticiposPagoProveedor.OrderBy(a => a.IdDocumentoDetalleWO).ToList();
+        Assert.Equal([600m, 900m], anticipos.Select(a => a.Valor));
+        Assert.Equal([600m, 2000m], anticipos.Select(a => a.SaldoAnterior));
+        Assert.Equal([1000m, 500m, -600m, -900m], documento.Renglones.OrderBy(r => r.Orden).Select(r => r.Total));
+        Assert.NotNull(documento.PagoProveedor);
+        Assert.Equal("900", documento.PagoProveedor!.Identificacion);
+
+        var detalle = await servicio.ObtenerProveedorAsync("900", comercial);
+        Assert.All(detalle.Anticipos, a => Assert.Equal(EstadoPartidaCuentaPorPagar.EnTramite, a.Estado));
+        Assert.Equal("ANTICIPO OC 10", detalle.Anticipos[0].Nota);
+    }
+
+    [Fact]
+    public async Task CrearPago_AnticipoQueYaNoAlcanzaAAplicarse_EsError()
+    {
+        var (comercial, _) = await SembrarFlujoGerenciaGeneralAsync();
+        var servicio = CrearServicio();
+        await servicio.GuardarFotoAsync(new([Factura(1, "900", -500, 0)],
+            [Anticipo(50, "900", 600, diasAtras: 30), Anticipo(51, "900", 100, diasAtras: 5)]));
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => servicio.CrearPagoAsync(new("900", [1], null, [50, 51]), comercial));
+        Assert.Contains("CEJ 15051", error.Message);
+        Assert.Empty(await db.InstanciasDocumento.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ConfirmarPago_ExigeBancoYSoporte_YDejaElCEPendienteSinAvisarTodavia()
+    {
+        var (comercial, general) = await SembrarFlujoGerenciaGeneralAsync();
+        var servicio = CrearServicio();
+        var notificaciones = new Mock<INotificacionService>();
+        var instancias = new InstanciaDocumentoService(db, Mock.Of<IAlmacenamientoArchivos>(), notificaciones.Object, new RelojFijo());
+        await servicio.GuardarFotoAsync(new([Factura(1, "900", -1000, 0)], [Anticipo(50, "900", 300, 10)]));
+        var id = await servicio.CrearPagoAsync(new("900", [1], null, [50]), comercial);
+        var soporte = await SubirSoporteAsync(id);
+
+        var sinBanco = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            instancias.EjecutarAccionAsync(id, general, new EjecutarAccionDto(TipoAccion.Aprobado, null, SoportePagoAdjuntoId: soporte)));
+        Assert.Contains("banco", sinBanco.Message);
+
+        var futura = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            instancias.EjecutarAccionAsync(id, general, new EjecutarAccionDto(TipoAccion.Aprobado, null, SoportePagoAdjuntoId: soporte,
+                IdCuentaBancoWO: 13650, FechaPago: Hoy.AddDays(1))));
+        Assert.Contains("posterior", futura.Message);
+
+        notificaciones.Invocations.Clear();
+        var detalle = await instancias.EjecutarAccionAsync(id, general, new EjecutarAccionDto(TipoAccion.Aprobado, null,
+            SoportePagoAdjuntoId: soporte, IdCuentaBancoWO: 13649, FechaPago: Hoy.AddDays(-1)));
+
+        Assert.Equal(EstadoInstanciaDocumento.Completado, detalle.Estado);
+        Assert.NotNull(detalle.PagoProveedor);
+        Assert.True(detalle.PagoProveedor!.PendienteCreacionCE);
+        Assert.Equal(700, detalle.PagoProveedor.Neto);
+        Assert.Equal("11100501 BANCO DE BOGOTA CTA CTE", detalle.PagoProveedor.NombreBanco);
+        // El aviso de "completado" se pospone hasta que el CE exista y quede adjunto.
+        notificaciones.Verify(n => n.NotificarUsuarioAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        var pendiente = Assert.Single(await servicio.ListarPendientesCreacionCEAsync());
+        Assert.Equal(new DateTime(2026, 11, 4), pendiente.FechaPago);
+        Assert.Equal(13649, pendiente.IdCuentaBancoWO);
+        Assert.Equal(700, pendiente.Neto);
+        Assert.Equal(1000, Assert.Single(pendiente.Facturas).Valor);
+        Assert.Equal(300, Assert.Single(pendiente.Anticipos).Valor);
+    }
+
+    [Fact]
+    public async Task ConfirmarPago_SinSalidaDePlata_NoPideBancoNiSoporte()
+    {
+        var (comercial, general) = await SembrarFlujoGerenciaGeneralAsync();
+        var servicio = CrearServicio();
+        var instancias = new InstanciaDocumentoService(db, Mock.Of<IAlmacenamientoArchivos>(), Mock.Of<INotificacionService>(), new RelojFijo());
+        await servicio.GuardarFotoAsync(new([Factura(1, "900", -1000, 0)], [Anticipo(50, "900", 1000, 10)]));
+        var id = await servicio.CrearPagoAsync(new("900", [1], null, [50]), comercial);
+
+        var detalle = await instancias.EjecutarAccionAsync(id, general, new EjecutarAccionDto(TipoAccion.Aprobado, null));
+
+        Assert.Equal(EstadoInstanciaDocumento.Completado, detalle.Estado);
+        Assert.True(detalle.PagoProveedor!.PendienteCreacionCE);
+        Assert.Null(detalle.PagoProveedor.IdCuentaBancoWO);
+        Assert.Equal(0, Assert.Single(await servicio.ListarPendientesCreacionCEAsync()).Neto);
+    }
+
+    [Fact]
+    public async Task CECreado_SaleDeLaColaYPasaALaBusquedaDelComprobante_ConflictoAvisa()
+    {
+        var (comercial, general) = await SembrarFlujoGerenciaGeneralAsync();
+        var notificaciones = new Mock<INotificacionService>();
+        var instancias = new InstanciaDocumentoService(db, Mock.Of<IAlmacenamientoArchivos>(), Mock.Of<INotificacionService>(), new RelojFijo());
+        var servicio = new CuentasPorPagarService(db, instancias, notificaciones.Object, new RelojFijo());
+        await servicio.GuardarFotoAsync(new([Factura(1, "900", -1000, 0), Factura(2, "900", -200, 0)], []));
+
+        var creado = await servicio.CrearPagoAsync(new("900", [1], null), comercial);
+        var conflicto = await servicio.CrearPagoAsync(new("900", [2], null), comercial);
+        foreach (var id in new[] { creado, conflicto })
+            await instancias.EjecutarAccionAsync(id, general, new EjecutarAccionDto(TipoAccion.Aprobado, null,
+                SoportePagoAdjuntoId: await SubirSoporteAsync(id), IdCuentaBancoWO: 13650));
+
+        await servicio.ConfirmarCECreadoAsync(creado, new CECreadoDto("CEJ-2", 22, 128000));
+        await servicio.ReportarConflictoCreacionCEAsync(conflicto, "La factura FCJ 2 ya aparece pagada en World Office.");
+
+        Assert.Empty(await servicio.ListarPendientesCreacionCEAsync());
+
+        var docCreado = await db.InstanciasDocumento.Include(i => i.PagoProveedor).SingleAsync(i => i.Id == creado);
+        Assert.Equal("CEJ-2 22", docCreado.NumeroComprobanteEgresoSolicitado);
+        Assert.True(docCreado.PendienteBusquedaComprobanteEgresoWO);
+        Assert.Equal(22, docCreado.PagoProveedor!.NumeroCE);
+
+        var docConflicto = await db.InstanciasDocumento.Include(i => i.PagoProveedor).SingleAsync(i => i.Id == conflicto);
+        Assert.Contains("ya aparece pagada", docConflicto.PagoProveedor!.ConflictoCreacionCE);
+        notificaciones.Verify(n => n.NotificarUsuarioAsync(conflicto, general, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        notificaciones.Verify(n => n.NotificarUsuarioAsync(conflicto, comercial, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+
+        // Un pago con CE ya creado no se puede volver a confirmar.
+        Assert.Null(docConflicto.PagoProveedor.NumeroCE);
     }
 
     [Fact]

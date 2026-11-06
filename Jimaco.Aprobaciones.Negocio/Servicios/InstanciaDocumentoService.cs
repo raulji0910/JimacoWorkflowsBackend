@@ -260,6 +260,54 @@ public class InstanciaDocumentoService(
         return await db.Usuarios.AnyAsync(u => u.Id == usuarioId && u.UsuarioWO == instancia.SolicitanteWO, ct);
     }
 
+    /// <summary>
+    /// En un documento "Pago a Proveedor", el paso que exige soporte de pago es el del gerente
+    /// general: aprobarlo es confirmar que ya pagó (ver <see cref="ConfirmarPagoProveedorAsync"/>).
+    /// </summary>
+    private static bool EsConfirmacionPagoProveedor(InstanciaDocumento instancia, PasoFlujo? paso) =>
+        paso is { RequiereSoportePagoAlAprobar: true }
+        && instancia.TipoDocumento?.PrefijoWorldOffice == CuentasPorPagarService.PrefijoPagoProveedor;
+
+    /// <summary>
+    /// Guarda banco y fecha del pago y deja el documento en la cola del Sincronizador para crear el
+    /// CE en WO. Valida acá (y no en el Sincronizador) lo que depende de quien aprueba: que eligió un
+    /// banco que existe en la lista de WO, y que la fecha no es futura.
+    /// </summary>
+    private async Task ConfirmarPagoProveedorAsync(InstanciaDocumento instancia, EjecutarAccionDto dto, bool sinSalidaDePlata, CancellationToken ct)
+    {
+        var pago = instancia.PagoProveedor
+            ?? throw new InvalidOperationException("Este pago no tiene los datos del proveedor (documento creado con una versión anterior). Rechazalo y volvé a crearlo desde Cuentas por Pagar.");
+
+        if (pago.NumeroCE is not null)
+            throw new InvalidOperationException($"Este pago ya tiene el comprobante {pago.PrefijoCE} {pago.NumeroCE:0} creado en World Office.");
+
+        var hoy = timeProvider.GetUtcNow().UtcDateTime.AddHours(-5).Date;
+        var fecha = (dto.FechaPago ?? hoy).Date;
+        if (fecha > hoy)
+            throw new InvalidOperationException("La fecha de pago no puede ser posterior a hoy.");
+
+        if (sinSalidaDePlata)
+        {
+            pago.IdCuentaBancoWO = null;
+            pago.NombreBanco = null;
+        }
+        else
+        {
+            if (dto.IdCuentaBancoWO is not int idBanco)
+                throw new InvalidOperationException("Elegí el banco desde donde se hizo el pago.");
+
+            var banco = await db.CuentasBancoWO.FirstOrDefaultAsync(b => b.IdCuentaContableWO == idBanco, ct)
+                ?? throw new InvalidOperationException("Ese banco no está en la lista de cuentas de World Office.");
+
+            pago.IdCuentaBancoWO = banco.IdCuentaContableWO;
+            pago.NombreBanco = $"{banco.Codigo} {banco.Nombre}";
+        }
+
+        pago.FechaPago = fecha;
+        pago.PendienteCreacionCE = true;
+        pago.ConflictoCreacionCE = null;
+    }
+
     public async Task<InstanciaDocumentoDetalleDto> EjecutarAccionAsync(int id, int usuarioId, EjecutarAccionDto dto, CancellationToken ct = default)
     {
         var instancia = await db.InstanciasDocumento
@@ -267,11 +315,18 @@ public class InstanciaDocumentoService(
             .Include(i => i.PasoActual).ThenInclude(p => p!.PasoFlujoRoles)
             .Include(i => i.PasoActual).ThenInclude(p => p!.DestinosDevolucion).ThenInclude(d => d.PasoFlujoDestino)
             .Include(i => i.DefinicionFlujo).ThenInclude(f => f.Pasos)
+            .Include(i => i.PagoProveedor)
             .FirstOrDefaultAsync(i => i.Id == id, ct)
             ?? throw new KeyNotFoundException("Documento no encontrado.");
 
         if (instancia.Estado != EstadoInstanciaDocumento.EnProceso || instancia.PasoActual is null)
             throw new InvalidOperationException("El documento no tiene un paso activo pendiente de acción.");
+
+        // "Pago a Proveedor" (2026-11-06): aprobar el paso del soporte de pago ES confirmar el pago
+        // real — ahí se elige banco y fecha, y el Sincronizador crea el CE en WO con eso. Si el neto
+        // es 0 (los anticipos cubren todo) no sale plata: ni banco ni soporte.
+        var confirmaPagoProveedor = EsConfirmacionPagoProveedor(instancia, instancia.PasoActual);
+        var pagoSinSalidaDePlata = confirmaPagoProveedor && (instancia.Valor ?? 0) <= 0;
 
         var paso = instancia.PasoActual;
 
@@ -287,7 +342,7 @@ public class InstanciaDocumentoService(
                 if (paso.RequiereComentarioAlAprobar && string.IsNullOrWhiteSpace(dto.Comentario))
                     throw new InvalidOperationException("Este paso exige un comentario para aprobar.");
 
-                if (paso.RequiereSoportePagoAlAprobar)
+                if (paso.RequiereSoportePagoAlAprobar && !pagoSinSalidaDePlata)
                 {
                     if (dto.SoportePagoAdjuntoId is not int soporteId)
                         throw new InvalidOperationException("Este paso exige adjuntar el soporte de pago (PDF) para aprobar.");
@@ -314,6 +369,9 @@ public class InstanciaDocumentoService(
                     instancia.PendienteBusquedaComprobanteEgresoWO = true;
                     instancia.ConflictoComprobanteEgresoWO = null;
                 }
+
+                if (confirmaPagoProveedor)
+                    await ConfirmarPagoProveedorAsync(instancia, dto, pagoSinSalidaDePlata, ct);
 
                 var siguiente = instancia.DefinicionFlujo.Pasos
                     .Where(p => p.Orden > paso.Orden)
@@ -527,6 +585,11 @@ public class InstanciaDocumentoService(
             // hasta que AdjuntarComprobanteEgresoAsync la dispare — no tiene sentido avisarle al
             // paso siguiente (ni cerrar el flujo) mostrando un documento sin el soporte todavía.
             case TipoAccion.Aprobado when instancia.PendienteBusquedaComprobanteEgresoWO:
+                break;
+
+            // Mismo criterio para "Pago a Proveedor": el aviso sale cuando el CE ya existe en WO y
+            // quedó adjunto (ConfirmarCECreadoAsync → búsqueda normal del CE → AdjuntarComprobanteEgresoAsync).
+            case TipoAccion.Aprobado when instancia.PagoProveedor?.PendienteCreacionCE == true:
                 break;
 
             case TipoAccion.Aprobado:
@@ -1065,7 +1128,24 @@ public class InstanciaDocumentoService(
             .Include(i => i.DocumentosVinculados).ThenInclude(d => d.Renglones)
             .Include(i => i.ComprobanteEgreso).ThenInclude(c => c!.Renglones)
             .Include(i => i.SoportePagoAdjunto)
+            .Include(i => i.PagoProveedor)
+            .Include(i => i.FacturasPagoProveedor)
+            .Include(i => i.AnticiposPagoProveedor)
             .AsSplitQuery();
+
+    private static PagoProveedorDto? MapearPagoProveedor(InstanciaDocumento i)
+    {
+        if (i.PagoProveedor is not { } p) return null;
+
+        var totalFacturas = i.FacturasPagoProveedor.Sum(f => f.Valor);
+        var totalAnticipos = i.AnticiposPagoProveedor.Sum(a => a.Valor);
+        return new PagoProveedorDto(
+            p.Identificacion, totalFacturas, totalAnticipos, totalFacturas - totalAnticipos,
+            i.AnticiposPagoProveedor.OrderBy(a => a.Fecha).Select(a => new AnticipoPagoProveedorDto(
+                a.IdDocumentoDetalleWO, a.Prefijo, a.NumeroDocumento, a.Fecha, a.Nota, a.Valor)).ToList(),
+            p.IdCuentaBancoWO, p.NombreBanco, p.FechaPago, p.PendienteCreacionCE, p.ConflictoCreacionCE,
+            p.PrefijoCE, p.NumeroCE, p.FechaCreacionCE);
+    }
 
     private static InstanciaDocumentoResumenDto MapearResumenDto(InstanciaDocumento i) => new(
         i.Id, i.TipoDocumento.Nombre, i.NumeroReferencia, i.Proveedor, i.Valor, i.FechaDocumento,
@@ -1116,5 +1196,7 @@ public class InstanciaDocumentoService(
                 r.Id, r.CodigoCuenta, r.NombreCuenta, r.Concepto, r.Tercero, r.Debito, r.Credito)).ToList()),
         i.SoportePagoAdjunto is null ? null : new AdjuntoDto(
             i.SoportePagoAdjunto.Id, i.SoportePagoAdjunto.NombreArchivo, i.SoportePagoAdjunto.ContentType,
-            i.SoportePagoAdjunto.TamanoBytes, i.SoportePagoAdjunto.FechaCarga));
+            i.SoportePagoAdjunto.TamanoBytes, i.SoportePagoAdjunto.FechaCarga),
+        MapearPagoProveedor(i),
+        EsConfirmacionPagoProveedor(i, i.PasoActual));
 }

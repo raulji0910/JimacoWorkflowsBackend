@@ -177,9 +177,17 @@ else
 // fase entera (permite seguir usando el Sincronizador solo para lectura hasta que WO tenga
 // listo un login con permiso de escritura — ver exploracion-worldoffice.sql).
 var connectionStringEscritura = config["WorldOffice:ConnectionStringEscritura"];
+// Sincronizador:EscribirAprobacionesWO=false (2026-11-06): la copia de QA necesita la conexión de
+// escritura para crear los CE de prueba (prefijo CEJ-2), pero NUNCA debe reflejar en la WO real
+// las aprobaciones de OC hechas en QA.
+var escribirAprobacionesWO = !bool.TryParse(config["Sincronizador:EscribirAprobacionesWO"], out var eaw) || eaw;
 if (string.IsNullOrWhiteSpace(connectionStringEscritura))
 {
     Console.WriteLine($"[{DateTime.Now:s}] WorldOffice:ConnectionStringEscritura no configurado — se omite la escritura de vuelta a WO.");
+}
+else if (!escribirAprobacionesWO)
+{
+    Console.WriteLine($"[{DateTime.Now:s}] Sincronizador:EscribirAprobacionesWO=false — no se reflejan aprobaciones en WO (copia secundaria).");
 }
 else
 {
@@ -253,6 +261,76 @@ else
 // empuja de vuelta armado, para adjuntarlo a la OC en el paso de Gerencia General. Usa la
 // connection string de SOLO LECTURA (nunca se escribe nada en WO acá) — corre siempre, no depende
 // de ConnectionStringEscritura. ----
+// ---- Pagos a proveedor confirmados (2026-11-06): crear el Comprobante de Egreso en WO. Va ANTES
+// de la búsqueda de comprobantes de abajo a propósito: al confirmar el CE creado, la Api lo deja en
+// esa misma cola y en esta misma corrida se trae la copia y sale el aviso de "pago completado".
+// Escribe en WO → necesita ConnectionStringEscritura (la misma de la Fase 2, Integrated Security). ----
+if (string.IsNullOrWhiteSpace(connectionStringEscritura))
+{
+    Console.WriteLine($"[{DateTime.Now:s}] WorldOffice:ConnectionStringEscritura no configurado — no se crean comprobantes de egreso de pagos a proveedor.");
+}
+else if (bool.TryParse(config["CuentasPorPagar:CrearCE"], out var crearCeActivo) && !crearCeActivo)
+{
+    Console.WriteLine($"[{DateTime.Now:s}] CuentasPorPagar:CrearCE=false — no se crean comprobantes de egreso de pagos a proveedor.");
+}
+else
+{
+    var configCe = new ConfiguracionCE(
+        // CEJ-2 (prefijo de prueba de CE) por defecto A PROPÓSITO: producción tiene que poner "CEJ" explícito.
+        Prefijo: config["CuentasPorPagar:PrefijoCE"] ?? "CEJ-2",
+        IdTerceroElabora: int.TryParse(config["CuentasPorPagar:IdTerceroElaboraCE"], out var idElabora) ? idElabora : 9700,
+        UsuarioWO: config["CuentasPorPagar:UsuarioWOCE"] ?? "CAMILO",
+        NomPc: config["CuentasPorPagar:NomPcCE"] ?? "APROBACIONES");
+    var escritorCe = new ComprobanteEgresoWriter(connectionStringEscritura, configCe);
+
+    IReadOnlyList<PendienteCreacionCEDto> pendientesCe;
+    try
+    {
+        pendientesCe = await jimaco.ListarPendientesCreacionCEAsync();
+    }
+    catch (Exception ex)
+    {
+        // Ej. una Api que todavía no tiene este endpoint — no debe frenar el resto de la corrida.
+        Console.Error.WriteLine($"[{DateTime.Now:s}] ERROR listando pagos a proveedor pendientes de CE: {ex.Message}");
+        pendientesCe = [];
+    }
+    Console.WriteLine($"[{DateTime.Now:s}] {pendientesCe.Count} pago(s) a proveedor pendiente(s) de crear el CE en WO (prefijo {configCe.Prefijo}).");
+
+    foreach (var p in pendientesCe)
+    {
+        try
+        {
+            var resultado = await escritorCe.CrearAsync(p);
+            switch (resultado.Resultado)
+            {
+                case ResultadoCreacionCE.Creado:
+                case ResultadoCreacionCE.YaExistia:
+                    await jimaco.ConfirmarCECreadoAsync(p.InstanciaDocumentoId,
+                        new CECreadoDto(resultado.Prefijo!, resultado.Numero!.Value, resultado.IdAsientoContable!.Value));
+                    Console.WriteLine($"[{DateTime.Now:s}]   Pago #{p.InstanciaDocumentoId} ({p.NumeroReferencia}) -> CE {resultado.Prefijo} {resultado.Numero:0} " +
+                                      $"{(resultado.Resultado == ResultadoCreacionCE.YaExistia ? "ya existía (corrida anterior)" : "creado")} por ${p.Neto:N0}.");
+                    break;
+
+                case ResultadoCreacionCE.Conflicto:
+                    await jimaco.ReportarConflictoCreacionCEAsync(p.InstanciaDocumentoId, resultado.Mensaje!);
+                    Console.WriteLine($"[{DateTime.Now:s}]   Pago #{p.InstanciaDocumentoId} -> CONFLICTO, no se creó el CE: {resultado.Mensaje}");
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            // Error técnico (WO caído, red...): sigue en la cola y se reintenta en la próxima corrida.
+            // Si el CE alcanzó a grabarse, la marca en la nota evita duplicarlo (ver ComprobanteEgresoWriter).
+            Console.Error.WriteLine($"[{DateTime.Now:s}]   ERROR creando el CE del pago #{p.InstanciaDocumentoId}: {ex.Message}");
+            if (ex is Microsoft.Data.SqlClient.SqlException sqlEx)
+            {
+                foreach (Microsoft.Data.SqlClient.SqlError error in sqlEx.Errors)
+                    Console.Error.WriteLine($"[{DateTime.Now:s}]     SQL Error {error.Number} (Procedure: {error.Procedure}, Line: {error.LineNumber}): {error.Message}");
+            }
+        }
+    }
+}
+
 Console.WriteLine($"[{DateTime.Now:s}] Revisando comprobantes de egreso pendientes de buscar en World Office...");
 var pendientesComprobante = await jimaco.ListarPendientesComprobanteEgresoAsync();
 Console.WriteLine($"[{DateTime.Now:s}] {pendientesComprobante.Count} documento(s) pendiente(s) de comprobante de egreso.");
@@ -261,7 +339,18 @@ foreach (var p in pendientesComprobante)
 {
     try
     {
-        if (!decimal.TryParse(p.NumeroComprobanteEgresoSolicitado, System.Globalization.CultureInfo.InvariantCulture, out var numeroComprobante))
+        // "15400" (escrito por Contabilidad, siempre CEJ) o "CEJ-2 22" (CE creado por el sistema,
+        // que trae su prefijo porque en pruebas no es CEJ).
+        var textoComprobante = p.NumeroComprobanteEgresoSolicitado.Trim();
+        var prefijoComprobante = "CEJ";
+        var espacio = textoComprobante.LastIndexOf(' ');
+        if (espacio > 0)
+        {
+            prefijoComprobante = textoComprobante[..espacio].Trim();
+            textoComprobante = textoComprobante[(espacio + 1)..];
+        }
+
+        if (!decimal.TryParse(textoComprobante, System.Globalization.CultureInfo.InvariantCulture, out var numeroComprobante))
         {
             await jimaco.ReportarConflictoComprobanteEgresoAsync(p.InstanciaDocumentoId,
                 $"\"{p.NumeroComprobanteEgresoSolicitado}\" no es un número de comprobante válido.");
@@ -271,7 +360,7 @@ foreach (var p in pendientesComprobante)
 
         // Mismo mecanismo que ObtenerDocumentosVinculadosAsync (misma tabla madre, prefijo "CEJ" en
         // vez de "COT") — ver comentario de esquema en WorldOfficeReader.
-        var ce = await lector.ObtenerDocumentoVinculadoAsync("CEJ", numeroComprobante);
+        var ce = await lector.ObtenerDocumentoVinculadoAsync(prefijoComprobante, numeroComprobante);
         if (ce is null)
         {
             await jimaco.ReportarConflictoComprobanteEgresoAsync(p.InstanciaDocumentoId,
@@ -478,8 +567,14 @@ else
             .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         var cuentaAnticipos = config["CuentasPorPagar:CuentaAnticipos"] ?? "133005";
 
+        var prefijosBanco = (config["CuentasPorPagar:CuentasBanco"] ?? "1105,1110")
+            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        // Bancolombia cta. cte. — de ahí salen ~95% de los CE (exploración 2026-11-05).
+        var bancoPorDefecto = config["CuentasPorPagar:BancoPorDefecto"] ?? "11100502";
+
         var partidasCxp = await lector.ObtenerCuentasPorPagarAsync(prefijosCuenta);
         var anticiposCxp = string.IsNullOrWhiteSpace(cuentaAnticipos) ? [] : await lector.ObtenerAnticiposProveedorAsync(cuentaAnticipos);
+        var bancosCxp = await lector.ObtenerCuentasBancoAsync(prefijosBanco);
 
         await jimaco.EnviarCuentasPorPagarAsync(new FotoCuentasPorPagarDto(
             Partidas: partidasCxp.Select(p => new PartidaCuentaPorPagarInputDto(
@@ -495,9 +590,13 @@ else
                 SaldoWO: p.Saldo,
                 CodigoCuenta: p.CodigoCuentaContable)).ToList(),
             Anticipos: anticiposCxp.Select(a => new AnticipoProveedorInputDto(
-                a.Identificacion ?? "", a.NombreTercero ?? "", a.Movimientos, a.Saldo)).ToList()));
+                a.Identificacion ?? "", a.NombreTercero ?? "", a.Movimientos, a.Saldo,
+                a.IdDocumentoDetalle, a.Prefijo, a.DocumentoNumero?.ToString("0"), a.Fecha, a.Nota)).ToList(),
+            Bancos: bancosCxp.Select(b => new CuentaBancoInputDto(
+                b.IdCuentaContable, b.CodigoCuentaContable ?? "", b.CuentaContable ?? "",
+                PorDefecto: b.CodigoCuentaContable?.Trim() == bancoPorDefecto)).ToList()));
 
-        Console.WriteLine($"[{DateTime.Now:s}] Cuentas por pagar: {partidasCxp.Count} partida(s) en {string.Join("/", prefijosCuenta)}, {anticiposCxp.Count} tercero(s) con anticipos sin cruzar.");
+        Console.WriteLine($"[{DateTime.Now:s}] Cuentas por pagar: {partidasCxp.Count} partida(s) en {string.Join("/", prefijosCuenta)}, {anticiposCxp.Count} anticipo(s) sin cruzar, {bancosCxp.Count} banco(s)/caja(s).");
     }
     catch (Exception ex)
     {

@@ -21,6 +21,10 @@ public class CuentasPorPagarController(ICuentasPorPagarService cuentasPorPagarSe
     public async Task<ActionResult<DetalleProveedorCuentaPorPagarDto>> Proveedor(string identificacion, CancellationToken ct) =>
         Ok(await cuentasPorPagarService.ObtenerProveedorAsync(identificacion, UsuarioActualId, ct));
 
+    [HttpGet("bancos")]
+    public async Task<ActionResult<IReadOnlyList<CuentaBancoDto>>> Bancos(CancellationToken ct) =>
+        Ok(await cuentasPorPagarService.ObtenerBancosAsync(ct));
+
     [HttpPost("pagos")]
     public async Task<ActionResult<int>> CrearPago(CrearPagoProveedorDto dto, CancellationToken ct) =>
         Ok(await cuentasPorPagarService.CrearPagoAsync(dto, UsuarioActualId, ct));

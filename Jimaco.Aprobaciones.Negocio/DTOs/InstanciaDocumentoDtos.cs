@@ -183,7 +183,11 @@ public record InstanciaDocumentoDetalleDto(
     string? ConflictoComprobanteEgresoWO,
     ComprobanteEgresoDto? ComprobanteEgreso,
     // El PDF que Gerencia General adjuntó al aprobar el pago real — null si ese paso no lo exigía o todavía no pasó por ahí.
-    AdjuntoDto? SoportePago);
+    AdjuntoDto? SoportePago,
+    // Solo documentos "Pago a Proveedor" (null en el resto).
+    PagoProveedorDto? PagoProveedor = null,
+    // true si aprobar el paso actual es confirmar el pago de un "Pago a Proveedor" (pide banco y fecha).
+    bool PasoActualConfirmaPagoProveedor = false);
 
 public record EjecutarAccionDto(
     TipoAccion Accion,
@@ -199,7 +203,11 @@ public record EjecutarAccionDto(
     // Solo aplica a Aprobar, cuando el paso actual exige soporte de pago (ver
     // PasoActualRequiereSoportePagoAlAprobar) — el Id del Adjunto (ya subido antes, vía el
     // endpoint normal de adjuntos) que se marca como EL soporte de esta aprobación.
-    int? SoportePagoAdjuntoId = null);
+    int? SoportePagoAdjuntoId = null,
+    // Solo documentos "Pago a Proveedor", al aprobar el último paso: banco desde donde se pagó
+    // (IdCuentaContable de WO; obligatorio si el neto es mayor que 0) y fecha del pago (default hoy).
+    int? IdCuentaBancoWO = null,
+    DateTime? FechaPago = null);
 
 public record ReenvioNotificacionResultadoDto(int Enviadas, int Fallidas);
 

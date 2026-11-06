@@ -141,4 +141,10 @@ public class InstanciaDocumento
 
     /// <summary>Solo en documentos "Pago a Proveedor": las partidas de WO que se mandaron a pagar.</summary>
     public ICollection<FacturaPagoProveedor> FacturasPagoProveedor { get; set; } = [];
+
+    /// <summary>Solo en documentos "Pago a Proveedor": los anticipos (133005) que se descuentan en el mismo CE.</summary>
+    public ICollection<AnticipoPagoProveedor> AnticiposPagoProveedor { get; set; } = [];
+
+    /// <summary>Solo en documentos "Pago a Proveedor": banco, fecha de pago y estado del CE que se crea en WO.</summary>
+    public PagoProveedor? PagoProveedor { get; set; }
 }
