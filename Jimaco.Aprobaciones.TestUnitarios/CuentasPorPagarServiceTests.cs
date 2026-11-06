@@ -351,6 +351,42 @@ public class CuentasPorPagarServiceTests
         Assert.Null(docConflicto.PagoProveedor.NumeroCE);
     }
 
+    private sealed class RelojMovil : TimeProvider
+    {
+        public DateTimeOffset Ahora { get; set; } = new(2026, 11, 5, 15, 0, 0, TimeSpan.Zero);
+        public override DateTimeOffset GetUtcNow() => Ahora;
+    }
+
+    [Fact]
+    public async Task CEDelSistemaBorradoEnWO_LaFacturaVuelveAEstarDisponibleConLaFotoSiguiente()
+    {
+        var (comercial, general) = await SembrarFlujoGerenciaGeneralAsync();
+        var reloj = new RelojMovil();
+        var instancias = new InstanciaDocumentoService(db, Mock.Of<IAlmacenamientoArchivos>(), Mock.Of<INotificacionService>(), reloj);
+        var servicio = new CuentasPorPagarService(db, instancias, Mock.Of<INotificacionService>(), reloj);
+        await servicio.GuardarFotoAsync(new([Factura(1, "900", -1000, 0)], [Anticipo(50, "900", 300, 10)]));
+
+        var id = await servicio.CrearPagoAsync(new("900", [1], null, [50]), comercial);
+        await instancias.EjecutarAccionAsync(id, general, new EjecutarAccionDto(TipoAccion.Aprobado, null,
+            SoportePagoAdjuntoId: await SubirSoporteAsync(id), IdCuentaBancoWO: 13650));
+
+        reloj.Ahora = reloj.Ahora.AddMinutes(5);
+        await servicio.ConfirmarCECreadoAsync(id, new CECreadoDto("CEJ-2", 22, 128000));
+
+        // Antes de una foto nueva, sigue "pagada, falta reflejar" (no se puede volver a pagar).
+        var detalle = await servicio.ObtenerProveedorAsync("900", comercial);
+        Assert.Equal(EstadoPartidaCuentaPorPagar.PagadaPendienteCruce, Assert.Single(detalle.Partidas).Estado);
+        Assert.Equal(EstadoPartidaCuentaPorPagar.PagadaPendienteCruce, Assert.Single(detalle.Anticipos).Estado);
+
+        // Contabilidad borró el CE en WO: la foto siguiente trae la factura y el anticipo igual que antes.
+        reloj.Ahora = reloj.Ahora.AddMinutes(5);
+        await servicio.GuardarFotoAsync(new([Factura(1, "900", -1000, 0)], [Anticipo(50, "900", 300, 10)]));
+
+        detalle = await servicio.ObtenerProveedorAsync("900", comercial);
+        Assert.Equal(EstadoPartidaCuentaPorPagar.Disponible, Assert.Single(detalle.Partidas).Estado);
+        Assert.Equal(EstadoPartidaCuentaPorPagar.Disponible, Assert.Single(detalle.Anticipos).Estado);
+    }
+
     [Fact]
     public async Task SinElPermiso_NoVeNadaNiPuedePagar()
     {

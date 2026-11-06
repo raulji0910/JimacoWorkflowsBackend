@@ -438,15 +438,23 @@ public class CuentasPorPagarService(AppDbContext db, IInstanciaDocumentoService 
     /// Estado de cada partida frente a los pagos ya creados acá. Un pago Rechazado libera sus
     /// facturas; uno en curso (o devuelto) las bloquea; uno Completado las bloquea solo mientras WO
     /// siga mostrando el MISMO saldo (todavía no cruzó el CEJ) — si el saldo cambió, WO aplicó un
-    /// abono parcial y lo que queda se puede volver a pagar.
+    /// abono parcial y lo que queda se puede volver a pagar. Excepción (2026-11-06): si el CE lo
+    /// creó el sistema y la foto vigente es POSTERIOR a esa creación, WO ya tuvo que reflejarlo — si
+    /// la factura sigue ahí con el mismo saldo, el CE se anuló o se borró en WO y vuelve a estar
+    /// disponible (caso real: Contabilidad borra un CE de prueba CEJ-2 para repetir la prueba).
     /// </summary>
     private async Task<Dictionary<PartidaCuentaPorPagar, EstadoPartida>> CalcularEstadosAsync(IReadOnlyList<PartidaCuentaPorPagar> partidas, CancellationToken ct)
     {
         var ids = partidas.Where(p => p.IdDocumentoDetalleWO != null).Select(p => p.IdDocumentoDetalleWO!.Value).Distinct().ToList();
 
+        var fechaCorte = await ObtenerFechaCorteAsync(ct);
         var pagos = await db.FacturasPagoProveedor.AsNoTracking()
             .Where(f => ids.Contains(f.IdDocumentoDetalleWO) && f.InstanciaDocumento.Estado != EstadoInstanciaDocumento.Rechazado)
-            .Select(f => new { f.IdDocumentoDetalleWO, f.Valor, f.InstanciaDocumentoId, f.InstanciaDocumento.Estado, f.InstanciaDocumento.NumeroReferencia })
+            .Select(f => new
+            {
+                f.IdDocumentoDetalleWO, f.Valor, f.InstanciaDocumentoId, f.InstanciaDocumento.Estado, f.InstanciaDocumento.NumeroReferencia,
+                FechaCreacionCE = f.InstanciaDocumento.PagoProveedor != null ? f.InstanciaDocumento.PagoProveedor.FechaCreacionCE : null
+            })
             .ToListAsync(ct);
 
         var resultado = new Dictionary<PartidaCuentaPorPagar, EstadoPartida>(ReferenceEqualityComparer.Instance);
@@ -461,7 +469,8 @@ public class CuentasPorPagarService(AppDbContext db, IInstanciaDocumentoService 
             var pago = pagos
                 .Where(x => x.IdDocumentoDetalleWO == p.IdDocumentoDetalleWO)
                 .OrderByDescending(x => x.InstanciaDocumentoId)
-                .FirstOrDefault(x => x.Estado != EstadoInstanciaDocumento.Completado || x.Valor == p.Pendiente);
+                .FirstOrDefault(x => x.Estado != EstadoInstanciaDocumento.Completado
+                                     || (x.Valor == p.Pendiente && !CEYaReflejadoEnFoto(x.FechaCreacionCE, fechaCorte)));
 
             resultado[p] = pago switch
             {
@@ -482,9 +491,14 @@ public class CuentasPorPagarService(AppDbContext db, IInstanciaDocumentoService 
     {
         var ids = anticipos.Where(a => a.IdDocumentoDetalleWO != null).Select(a => a.IdDocumentoDetalleWO!.Value).Distinct().ToList();
 
+        var fechaCorte = await ObtenerFechaCorteAsync(ct);
         var usos = await db.AnticiposPagoProveedor.AsNoTracking()
             .Where(a => ids.Contains(a.IdDocumentoDetalleWO) && a.InstanciaDocumento.Estado != EstadoInstanciaDocumento.Rechazado)
-            .Select(a => new { a.IdDocumentoDetalleWO, a.SaldoAnterior, a.InstanciaDocumentoId, a.InstanciaDocumento.Estado, a.InstanciaDocumento.NumeroReferencia })
+            .Select(a => new
+            {
+                a.IdDocumentoDetalleWO, a.SaldoAnterior, a.InstanciaDocumentoId, a.InstanciaDocumento.Estado, a.InstanciaDocumento.NumeroReferencia,
+                FechaCreacionCE = a.InstanciaDocumento.PagoProveedor != null ? a.InstanciaDocumento.PagoProveedor.FechaCreacionCE : null
+            })
             .ToListAsync(ct);
 
         var resultado = new Dictionary<AnticipoProveedor, EstadoPartida>(ReferenceEqualityComparer.Instance);
@@ -499,7 +513,8 @@ public class CuentasPorPagarService(AppDbContext db, IInstanciaDocumentoService 
             var uso = usos
                 .Where(x => x.IdDocumentoDetalleWO == a.IdDocumentoDetalleWO)
                 .OrderByDescending(x => x.InstanciaDocumentoId)
-                .FirstOrDefault(x => x.Estado != EstadoInstanciaDocumento.Completado || x.SaldoAnterior == a.Saldo);
+                .FirstOrDefault(x => x.Estado != EstadoInstanciaDocumento.Completado
+                                     || (x.SaldoAnterior == a.Saldo && !CEYaReflejadoEnFoto(x.FechaCreacionCE, fechaCorte)));
 
             resultado[a] = uso switch
             {
@@ -536,6 +551,10 @@ public class CuentasPorPagarService(AppDbContext db, IInstanciaDocumentoService 
             VencimientoMasAntiguo: porPagar.Min(p => p.Vencimiento),
             DiasMaximoVencido: vencidas.Count == 0 ? 0 : vencidas.Max(p => DiasVencido(p.Vencimiento, hoy)!.Value));
     }
+
+    /// <summary>true si el sistema creó el CE y la foto vigente de WO se tomó después — o sea, WO ya debería mostrarlo cruzado.</summary>
+    private static bool CEYaReflejadoEnFoto(DateTime? fechaCreacionCE, DateTime? fechaCorte) =>
+        fechaCreacionCE is { } creado && fechaCorte is { } corte && corte > creado;
 
     private static int? DiasVencido(DateTime? vencimiento, DateTime hoy) =>
         vencimiento is { } v ? (int)(hoy - v.Date).TotalDays : null;
