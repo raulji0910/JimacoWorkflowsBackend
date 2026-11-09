@@ -186,7 +186,7 @@ public class CuentasPorPagarService(AppDbContext db, IInstanciaDocumentoService 
             anticiposDto);
     }
 
-    public async Task<int> CrearPagoAsync(CrearPagoProveedorDto dto, int usuarioId, CancellationToken ct = default)
+    public async Task<int> CrearPagoAsync(CrearPagoProveedorDto dto, int usuarioId, CancellationToken ct = default, int? relacionPagoId = null)
     {
         await ExigirPermisoAsync(usuarioId, ct);
 
@@ -252,7 +252,7 @@ public class CuentasPorPagarService(AppDbContext db, IInstanciaDocumentoService 
             Valor: totalFacturas - totalAnticipos,
             FechaDocumento: Hoy,
             Datos: datos,
-            Renglones: renglones), usuarioId, ct);
+            Renglones: renglones), usuarioId, ct, notificar: false);
 
         db.FacturasPagoProveedor.AddRange(ordenadas.Select(p => new FacturaPagoProveedor
         {
@@ -277,7 +277,13 @@ public class CuentasPorPagarService(AppDbContext db, IInstanciaDocumentoService 
             SaldoAnterior = a.Anticipo.Saldo,
             Valor = a.Valor
         }));
-        db.PagosProveedor.Add(new PagoProveedor { InstanciaDocumentoId = creado.Id, Identificacion = identificacion });
+        db.PagosProveedor.Add(new PagoProveedor
+        {
+            InstanciaDocumentoId = creado.Id,
+            Identificacion = identificacion,
+            NombreTercero = ordenadas[0].NombreTercero,
+            RelacionPagoId = relacionPagoId
+        });
         await db.SaveChangesAsync(ct);
 
         return creado.Id;
@@ -341,6 +347,13 @@ public class CuentasPorPagarService(AppDbContext db, IInstanciaDocumentoService 
             .Select(p => new
             {
                 p.InstanciaDocumentoId,
+                p.EsExtraordinario,
+                p.IdTerceroWO,
+                p.CodigoCuentaGiro,
+                p.GiroEsAnticipo,
+                p.NombreTipoGiro,
+                p.Concepto,
+                ValorInstancia = p.InstanciaDocumento.Valor,
                 p.InstanciaDocumento.NumeroReferencia,
                 p.Identificacion,
                 p.FechaPago,
@@ -354,9 +367,15 @@ public class CuentasPorPagarService(AppDbContext db, IInstanciaDocumentoService 
             })
             .ToListAsync(ct);
 
-        return pendientes.Select(p => new PendienteCreacionCEDto(
-            p.InstanciaDocumentoId, p.NumeroReferencia, p.Identificacion, p.FechaPago!.Value, p.IdCuentaBancoWO,
-            p.Facturas.Sum(f => f.Valor) - p.Anticipos.Sum(a => a.Valor), p.Facturas, p.Anticipos)).ToList();
+        return pendientes.Select(p => p.EsExtraordinario
+            ? new PendienteCreacionCEDto(
+                p.InstanciaDocumentoId, p.NumeroReferencia, p.Identificacion, p.FechaPago!.Value, p.IdCuentaBancoWO,
+                p.ValorInstancia ?? 0, [], [],
+                new GiroCreacionCEDto(p.IdTerceroWO ?? 0, p.Identificacion, p.CodigoCuentaGiro ?? "", p.GiroEsAnticipo,
+                    p.NombreTipoGiro ?? "", p.Concepto ?? "", p.ValorInstancia ?? 0))
+            : new PendienteCreacionCEDto(
+                p.InstanciaDocumentoId, p.NumeroReferencia, p.Identificacion, p.FechaPago!.Value, p.IdCuentaBancoWO,
+                p.Facturas.Sum(f => f.Valor) - p.Anticipos.Sum(a => a.Valor), p.Facturas, p.Anticipos)).ToList();
     }
 
     public async Task ConfirmarCECreadoAsync(int instanciaDocumentoId, CECreadoDto dto, CancellationToken ct = default)
@@ -402,6 +421,12 @@ public class CuentasPorPagarService(AppDbContext db, IInstanciaDocumentoService 
         pago.ConflictoCreacionCE = Recortar(mensaje, 1000);
         await db.SaveChangesAsync(ct);
 
+        if (pago.LotePagoId is int lotePagoId)
+        {
+            try { await instanciaService.NotificarLotePagoSiTerminoAsync(lotePagoId, ct); }
+            catch { /* el aviso del lote no debe frenar el reporte del conflicto */ }
+        }
+
         var desc = string.IsNullOrWhiteSpace(instancia.NumeroReferencia)
             ? instancia.TipoDocumento.Nombre
             : $"{instancia.TipoDocumento.Nombre} {instancia.NumeroReferencia}";
@@ -431,6 +456,328 @@ public class CuentasPorPagarService(AppDbContext db, IInstanciaDocumentoService 
             }
         }
     }
+
+    // =====================================================================================
+    // Relación de pagos (2026-11-09) — pedido real: ya no un correo por proveedor. Gerencia
+    // Comercial va marcando facturas proveedor por proveedor (borrador guardado acá), revisa todo
+    // junto y ratifica: se crea una orden por proveedor (un CE por tercero en WO) y sale UN solo
+    // correo al pagador con la relación completa.
+    // =====================================================================================
+
+    public async Task<RelacionBorradorDto> ObtenerBorradorAsync(int usuarioId, CancellationToken ct = default)
+    {
+        await ExigirPermisoAsync(usuarioId, ct);
+        var proveedores = await ArmarBorradorAsync(usuarioId, ct);
+        return new RelacionBorradorDto(proveedores, proveedores.Sum(p => p.Facturas.Count), proveedores.Sum(p => p.Neto));
+    }
+
+    public async Task<RelacionBorradorDto> GuardarBorradorProveedorAsync(string identificacion, GuardarBorradorProveedorDto dto, int usuarioId, CancellationToken ct = default)
+    {
+        await ExigirPermisoAsync(usuarioId, ct);
+        identificacion = identificacion.Trim();
+
+        var borrador = await db.BorradoresPagoProveedor
+            .FirstOrDefaultAsync(b => b.UsuarioId == usuarioId && b.Identificacion == identificacion, ct);
+
+        var facturas = (dto.IdsFacturas ?? []).Distinct().ToList();
+        if (facturas.Count == 0)
+        {
+            if (borrador is not null) db.BorradoresPagoProveedor.Remove(borrador);
+        }
+        else
+        {
+            var partidas = await db.PartidasCuentaPorPagar.AsNoTracking()
+                .Where(p => p.Identificacion == identificacion && p.IdDocumentoDetalleWO != null && facturas.Contains(p.IdDocumentoDetalleWO.Value))
+                .ToListAsync(ct);
+            if (partidas.Select(p => p.IdDocumentoDetalleWO).Distinct().Count() != facturas.Count)
+                throw new InvalidOperationException("Alguna de las facturas elegidas ya no está pendiente en World Office (la información se actualizó). Recargá la pantalla y volvé a elegir.");
+
+            var estados = await CalcularEstadosAsync(partidas, ct);
+            var noDisponibles = partidas.Where(p => estados[p].Estado != EstadoPartidaCuentaPorPagar.Disponible).ToList();
+            if (noDisponibles.Count > 0)
+                throw new InvalidOperationException(
+                    $"Estas facturas no se pueden incluir (ya están en un pago o no tienen saldo a pagar): {string.Join(", ", noDisponibles.Select(Etiqueta))}.");
+
+            if (borrador is null)
+            {
+                borrador = new BorradorPagoProveedor { UsuarioId = usuarioId, Identificacion = identificacion };
+                db.BorradoresPagoProveedor.Add(borrador);
+            }
+            borrador.NombreTercero = partidas[0].NombreTercero;
+            borrador.FacturasIds = string.Join(',', facturas);
+            borrador.AnticiposIds = string.Join(',', (dto.IdsAnticipos ?? []).Distinct());
+            borrador.FechaActualizacion = timeProvider.GetUtcNow().UtcDateTime;
+        }
+
+        await db.SaveChangesAsync(ct);
+        return await ObtenerBorradorAsync(usuarioId, ct);
+    }
+
+    public async Task<RelacionCreadaDto> RatificarRelacionAsync(RatificarRelacionDto dto, int usuarioId, CancellationToken ct = default)
+    {
+        await ExigirPermisoAsync(usuarioId, ct);
+
+        var proveedores = await ArmarBorradorAsync(usuarioId, ct);
+        if (proveedores.Count == 0)
+            throw new InvalidOperationException("La relación está vacía: marcá primero las facturas a pagar.");
+
+        var conProblema = proveedores.Where(p => p.Problema is not null).ToList();
+        if (conProblema.Count > 0)
+            throw new InvalidOperationException(
+                "Hay que corregir la relación antes de enviarla: " + string.Join(" ", conProblema.Select(p => $"{p.Nombre}: {p.Problema}")));
+
+        await using var tx = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null;
+
+        var relacion = new RelacionPago
+        {
+            Numero = (await db.RelacionesPago.MaxAsync(r => (int?)r.Numero, ct) ?? 0) + 1,
+            CreadoPorUsuarioId = usuarioId,
+            Fecha = timeProvider.GetUtcNow().UtcDateTime,
+            Observaciones = Recortar(dto.Observaciones?.Trim() is { Length: > 0 } o ? o : null, 500)
+        };
+        db.RelacionesPago.Add(relacion);
+        await db.SaveChangesAsync(ct);
+
+        var ordenes = new List<(int Id, BorradorProveedorDto Proveedor)>();
+        foreach (var p in proveedores)
+        {
+            var id = await CrearPagoAsync(new CrearPagoProveedorDto(
+                p.Identificacion,
+                p.Facturas.Select(f => f.IdDocumentoDetalleWO).ToList(),
+                relacion.Observaciones,
+                // Solo los anticipos que de verdad alcanzan a aplicarse (el resto el borrador ya los mostró en 0).
+                p.Anticipos.Where(a => a.Valor > 0).Select(a => a.IdDocumentoDetalleWO).ToList()), usuarioId, ct, relacion.Id);
+            ordenes.Add((id, p));
+        }
+
+        db.BorradoresPagoProveedor.RemoveRange(await db.BorradoresPagoProveedor.Where(b => b.UsuarioId == usuarioId).ToListAsync(ct));
+        await db.SaveChangesAsync(ct);
+        if (tx is not null) await tx.CommitAsync(ct);
+
+        var total = proveedores.Sum(p => p.Neto);
+        var creador = await db.Usuarios.Where(u => u.Id == usuarioId).Select(u => u.Nombre).FirstOrDefaultAsync(ct);
+        var filas = string.Concat(proveedores.Select(p =>
+            $"<tr><td>{Html(p.Nombre)}</td><td style=\"text-align:center\">{p.Facturas.Count}</td>" +
+            $"<td style=\"text-align:right\">{p.TotalFacturas:N0}</td><td style=\"text-align:right\">{(p.TotalAnticipos > 0 ? "-" + p.TotalAnticipos.ToString("N0") : "")}</td>" +
+            $"<td style=\"text-align:right\"><b>{p.Neto:N0}</b></td></tr>"));
+        var cuerpo = $"<p>{Html(creador ?? "Gerencia Comercial")} envió la <b>relación de pagos {relacion.Numero}</b>: " +
+                     $"{proveedores.Count} proveedor(es), {proveedores.Sum(p => p.Facturas.Count)} factura(s), por <b>${total:N0}</b>.</p>" +
+                     (relacion.Observaciones is null ? "" : $"<p><i>{Html(relacion.Observaciones)}</i></p>") +
+                     "<table border=\"1\" cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse:collapse\">" +
+                     "<tr><th>Proveedor</th><th>Facturas</th><th>Valor facturas</th><th>Anticipos</th><th>A pagar</th></tr>" +
+                     $"{filas}<tr><td colspan=\"4\"><b>Total</b></td><td style=\"text-align:right\"><b>{total:N0}</b></td></tr></table>" +
+                     "<p>Desde el menú <b>Pagos</b> elegís qué pagar (como un lote, con un solo soporte) y qué rechazar.</p>";
+        await AvisarPagadoresAsync(ordenes[0].Id, $"[Jimaco Aprobaciones] Relación de pagos {relacion.Numero} por ${total:N0}", cuerpo, ct);
+
+        return new RelacionCreadaDto(relacion.Numero, ordenes.Count, total);
+    }
+
+    /// <summary>
+    /// El borrador del usuario contra la foto vigente de WO: cada factura con su saldo de hoy (o
+    /// marcada como no disponible), los anticipos repartidos igual que al crear el pago (del más viejo
+    /// al más nuevo, sin pasarse del total de facturas) y el neto por proveedor.
+    /// </summary>
+    private async Task<List<BorradorProveedorDto>> ArmarBorradorAsync(int usuarioId, CancellationToken ct)
+    {
+        var borradores = await db.BorradoresPagoProveedor.AsNoTracking()
+            .Where(b => b.UsuarioId == usuarioId)
+            .OrderBy(b => b.NombreTercero)
+            .ToListAsync(ct);
+
+        var resultado = new List<BorradorProveedorDto>();
+        foreach (var b in borradores)
+        {
+            var idsFacturas = ParsearIds(b.FacturasIds);
+            var idsAnticipos = ParsearIds(b.AnticiposIds);
+
+            var partidas = await db.PartidasCuentaPorPagar.AsNoTracking()
+                .Where(p => p.Identificacion == b.Identificacion && p.IdDocumentoDetalleWO != null && idsFacturas.Contains(p.IdDocumentoDetalleWO.Value))
+                .ToListAsync(ct);
+            var estados = await CalcularEstadosAsync(partidas, ct);
+
+            var problemas = new List<string>();
+            var faltantes = idsFacturas.Count - partidas.Select(p => p.IdDocumentoDetalleWO).Distinct().Count();
+            if (faltantes > 0) problemas.Add($"{faltantes} factura(s) ya no están pendientes en World Office.");
+
+            var facturas = partidas
+                .OrderBy(p => p.Vencimiento ?? p.Fecha).ThenBy(p => p.Fecha)
+                .Select(p => new BorradorFacturaDto(p.IdDocumentoDetalleWO!.Value, $"{p.Prefijo} {p.NumeroDocumento}".Trim(), p.NumeroDocumentoExterno,
+                    p.Vencimiento, p.Pendiente, estados[p].Estado == EstadoPartidaCuentaPorPagar.Disponible))
+                .ToList();
+            if (facturas.Any(f => !f.Disponible))
+                problemas.Add("Hay facturas que ya están en otro pago: " + string.Join(", ", facturas.Where(f => !f.Disponible).Select(f => f.Etiqueta)) + ".");
+
+            var totalFacturas = facturas.Where(f => f.Disponible).Sum(f => f.Valor);
+
+            var anticiposWO = await db.AnticiposProveedor.AsNoTracking()
+                .Where(a => a.Identificacion == b.Identificacion && a.IdDocumentoDetalleWO != null && idsAnticipos.Contains(a.IdDocumentoDetalleWO.Value))
+                .ToListAsync(ct);
+            var estadosAnticipos = await CalcularEstadosAnticiposAsync(anticiposWO, ct);
+
+            var anticipos = new List<BorradorAnticipoDto>();
+            var restante = totalFacturas;
+            foreach (var a in anticiposWO.OrderBy(a => a.Fecha ?? DateTime.MinValue).ThenBy(a => a.IdDocumentoDetalleWO))
+            {
+                var disponible = estadosAnticipos[a].Estado == EstadoPartidaCuentaPorPagar.Disponible;
+                var valor = disponible ? Math.Min(a.Saldo, Math.Max(0, restante)) : 0;
+                restante -= valor;
+                anticipos.Add(new BorradorAnticipoDto(a.IdDocumentoDetalleWO!.Value, $"{a.Prefijo} {a.NumeroDocumento}".Trim(), a.Nota, valor, disponible));
+            }
+
+            var totalAnticipos = anticipos.Sum(a => a.Valor);
+            var nombre = b.NombreTercero ?? partidas.FirstOrDefault()?.NombreTercero ?? b.Identificacion;
+            resultado.Add(new BorradorProveedorDto(b.Identificacion, nombre, facturas, anticipos, totalFacturas, totalAnticipos,
+                totalFacturas - totalAnticipos, problemas.Count == 0 ? null : string.Join(" ", problemas)));
+        }
+        return resultado;
+    }
+
+    private static List<int> ParsearIds(string ids) =>
+        ids.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(x => int.TryParse(x, out var n) ? n : (int?)null)
+            .Where(n => n is not null).Select(n => n!.Value).Distinct().ToList();
+
+    // =====================================================================================
+    // Pago extraordinario (2026-11-09): giro a un tercero sin factura (lo pide Gerencia
+    // Comercial cuando lo necesita). El tipo de giro decide la cuenta que se debita en el CE.
+    // =====================================================================================
+
+    public async Task<IReadOnlyList<TipoGiroDto>> ObtenerTiposGiroAsync(CancellationToken ct = default) =>
+        await db.TiposGiro.AsNoTracking().Where(t => t.Activo).OrderBy(t => t.Orden).ThenBy(t => t.Nombre)
+            .Select(t => new TipoGiroDto(t.Id, t.Nombre, t.EsAnticipo))
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<TerceroWODto>> BuscarTercerosAsync(string texto, int usuarioId, CancellationToken ct = default)
+    {
+        await ExigirPermisoAsync(usuarioId, ct);
+        texto = (texto ?? "").Trim();
+        if (texto.Length < 2) return [];
+
+        return await db.TercerosWO.AsNoTracking()
+            .Where(t => t.Identificacion.StartsWith(texto) || t.Nombre.Contains(texto))
+            .OrderBy(t => t.Nombre)
+            .Take(20)
+            .Select(t => new TerceroWODto(t.IdTerceroWO, t.Identificacion, t.Nombre))
+            .ToListAsync(ct);
+    }
+
+    public async Task<int> CrearPagoExtraordinarioAsync(CrearPagoExtraordinarioDto dto, int usuarioId, CancellationToken ct = default)
+    {
+        await ExigirPermisoAsync(usuarioId, ct);
+
+        if (dto.Valor <= 0)
+            throw new InvalidOperationException("El monto tiene que ser mayor que 0.");
+        var concepto = (dto.Concepto ?? "").Trim();
+        if (concepto.Length == 0)
+            throw new InvalidOperationException("Escribí el concepto del pago.");
+        if (concepto.Length > 300)
+            throw new InvalidOperationException("El concepto no puede pasar de 300 caracteres.");
+
+        var tercero = await db.TercerosWO.AsNoTracking().FirstOrDefaultAsync(t => t.IdTerceroWO == dto.IdTerceroWO, ct)
+            ?? throw new InvalidOperationException("Ese tercero no está en la lista de World Office.");
+        var tipoGiro = await db.TiposGiro.AsNoTracking().FirstOrDefaultAsync(t => t.Id == dto.TipoGiroId && t.Activo, ct)
+            ?? throw new InvalidOperationException("Elegí el tipo de giro.");
+
+        var tipo = await db.TiposDocumento.FirstOrDefaultAsync(t => t.PrefijoWorldOffice == PrefijoPagoProveedor && t.Activo, ct)
+            ?? throw new InvalidOperationException("No está configurado el tipo de documento \"Pago a Proveedor\".");
+        var consecutivo = await db.InstanciasDocumento.CountAsync(i => i.TipoDocumentoId == tipo.Id, ct) + 1;
+
+        var creado = await instanciaService.CrearAsync(new CrearInstanciaDocumentoDto(
+            TipoDocumentoId: tipo.Id,
+            NumeroReferencia: consecutivo.ToString(),
+            Proveedor: tercero.Nombre,
+            Valor: dto.Valor,
+            FechaDocumento: Hoy,
+            Datos: new Dictionary<string, string> { ["nit"] = tercero.Identificacion, ["observaciones"] = concepto },
+            Renglones: [new RenglonInputDto(Codigo: tipoGiro.Nombre, Descripcion: concepto, Cantidad: 1, UnidadMedida: null, ValorUnitario: dto.Valor, PorcentajeIva: 0m)]),
+            usuarioId, ct, notificar: false);
+
+        db.PagosProveedor.Add(new PagoProveedor
+        {
+            InstanciaDocumentoId = creado.Id,
+            Identificacion = tercero.Identificacion,
+            EsExtraordinario = true,
+            IdTerceroWO = tercero.IdTerceroWO,
+            NombreTercero = tercero.Nombre,
+            TipoGiroId = tipoGiro.Id,
+            NombreTipoGiro = tipoGiro.Nombre,
+            CodigoCuentaGiro = tipoGiro.CodigoCuenta,
+            GiroEsAnticipo = tipoGiro.EsAnticipo,
+            Concepto = concepto
+        });
+        await db.SaveChangesAsync(ct);
+
+        var creador = await db.Usuarios.Where(u => u.Id == usuarioId).Select(u => u.Nombre).FirstOrDefaultAsync(ct);
+        var cuerpo = $"<p>{Html(creador ?? "Gerencia Comercial")} pidió un <b>pago extraordinario</b>:</p>" +
+                     "<table border=\"1\" cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse:collapse\">" +
+                     $"<tr><th style=\"text-align:left\">Tercero</th><td>{Html(tercero.Nombre)} ({Html(tercero.Identificacion)})</td></tr>" +
+                     $"<tr><th style=\"text-align:left\">Valor</th><td><b>${dto.Valor:N0}</b></td></tr>" +
+                     $"<tr><th style=\"text-align:left\">Tipo de giro</th><td>{Html(tipoGiro.Nombre)}</td></tr>" +
+                     $"<tr><th style=\"text-align:left\">Concepto</th><td>{Html(concepto)}</td></tr></table>" +
+                     "<p>Lo encontrás en el menú <b>Pagos</b>.</p>";
+        await AvisarPagadoresAsync(creado.Id, $"[Jimaco Aprobaciones] Pago extraordinario a {tercero.Nombre} por ${dto.Valor:N0}", cuerpo, ct);
+
+        return creado.Id;
+    }
+
+    // ---- Catálogo de terceros de WO (lo manda el Sincronizador cada pocas horas) ----
+
+    public async Task<DateTime?> ObtenerFechaCorteTercerosAsync(CancellationToken ct = default) =>
+        await db.SincronizacionesCuentasPorPagar.Select(s => s.FechaCorteTerceros).FirstOrDefaultAsync(ct);
+
+    public async Task GuardarTercerosAsync(IReadOnlyList<TerceroWOInputDto> terceros, CancellationToken ct = default)
+    {
+        var limpios = terceros
+            .Where(t => !string.IsNullOrWhiteSpace(t.Identificacion))
+            .GroupBy(t => t.IdTerceroWO)
+            .Select(g => g.First())
+            .Select(t => new TerceroWO
+            {
+                IdTerceroWO = t.IdTerceroWO,
+                Identificacion = Recortar(t.Identificacion.Trim(), 30)!,
+                Nombre = Recortar(string.IsNullOrWhiteSpace(t.Nombre) ? t.Identificacion.Trim() : t.Nombre.Trim(), 300)!
+            })
+            .ToList();
+
+        if (db.Database.IsRelational())
+            await db.TercerosWO.ExecuteDeleteAsync(ct);
+        else
+            db.TercerosWO.RemoveRange(await db.TercerosWO.ToListAsync(ct));
+        db.TercerosWO.AddRange(limpios);
+
+        var sincronizacion = await db.SincronizacionesCuentasPorPagar.FirstOrDefaultAsync(ct);
+        if (sincronizacion is null)
+        {
+            sincronizacion = new SincronizacionCuentasPorPagar { FechaCorte = timeProvider.GetUtcNow().UtcDateTime };
+            db.SincronizacionesCuentasPorPagar.Add(sincronizacion);
+        }
+        sincronizacion.FechaCorteTerceros = timeProvider.GetUtcNow().UtcDateTime;
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Un correo a cada usuario activo con un rol activo que tenga Rol.PuedePagarCuentas.</summary>
+    private async Task AvisarPagadoresAsync(int instanciaDocumentoId, string asunto, string cuerpoHtml, CancellationToken ct)
+    {
+        var pagadores = await db.UsuarioRoles
+            .Where(ur => ur.Rol.Activo && ur.Rol.PuedePagarCuentas && ur.Usuario.Activo)
+            .Select(ur => ur.UsuarioId)
+            .Distinct()
+            .ToListAsync(ct);
+
+        foreach (var pagadorId in pagadores)
+        {
+            try
+            {
+                await notificacionService.NotificarHtmlAsync(instanciaDocumentoId, pagadorId, asunto, cuerpoHtml, "/pagos", ct);
+            }
+            catch
+            {
+                // Un correo que falla no deshace la relación (ya quedó creada y visible en "Pagos").
+            }
+        }
+    }
+
+    private static string Html(string? texto) => System.Net.WebUtility.HtmlEncode(texto ?? "");
 
     private sealed record EstadoPartida(EstadoPartidaCuentaPorPagar Estado, int? InstanciaId, string? NumeroReferencia);
 

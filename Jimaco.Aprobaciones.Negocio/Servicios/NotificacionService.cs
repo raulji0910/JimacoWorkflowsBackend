@@ -331,6 +331,20 @@ public class NotificacionService(
         await CrearYEnviarAsync(instanciaDocumentoId, usuario, asunto, $"<p>{mensaje}</p>", ct);
     }
 
+    public async Task NotificarHtmlAsync(int? instanciaDocumentoId, int usuarioId, string asunto, string cuerpoHtml, string? rutaFrontend, CancellationToken ct = default)
+    {
+        var usuario = await db.Usuarios.FirstOrDefaultAsync(u => u.Id == usuarioId && u.Activo, ct);
+        if (usuario is null) return;
+
+        if (!string.IsNullOrWhiteSpace(rutaFrontend))
+        {
+            var frontendBaseUrl = (configuration["App:FrontendBaseUrl"] ?? "").TrimEnd('/');
+            cuerpoHtml += $"<p><a href=\"{frontendBaseUrl}{rutaFrontend}\">Abrir en Jimaco Aprobaciones</a></p>";
+        }
+
+        await CrearYEnviarAsync(instanciaDocumentoId, usuario, asunto, cuerpoHtml, ct);
+    }
+
     public async Task EnviarPruebaAsync(string destinatarioEmail, CancellationToken ct = default)
     {
         await emailSender.EnviarAsync(

@@ -18,7 +18,21 @@ public interface ICuentasPorPagarService
     Task<DetalleProveedorCuentaPorPagarDto> ObtenerProveedorAsync(string identificacion, int usuarioId, CancellationToken ct = default);
 
     /// <summary>Crea el documento "Pago a Proveedor" con las partidas (y anticipos) elegidos — devuelve su Id.</summary>
-    Task<int> CrearPagoAsync(CrearPagoProveedorDto dto, int usuarioId, CancellationToken ct = default);
+    Task<int> CrearPagoAsync(CrearPagoProveedorDto dto, int usuarioId, CancellationToken ct = default, int? relacionPagoId = null);
+
+    // Relación de pagos (borrador → ratificar = un solo correo al pagador).
+    Task<RelacionBorradorDto> ObtenerBorradorAsync(int usuarioId, CancellationToken ct = default);
+    Task<RelacionBorradorDto> GuardarBorradorProveedorAsync(string identificacion, GuardarBorradorProveedorDto dto, int usuarioId, CancellationToken ct = default);
+    Task<RelacionCreadaDto> RatificarRelacionAsync(RatificarRelacionDto dto, int usuarioId, CancellationToken ct = default);
+
+    // Pago extraordinario.
+    Task<IReadOnlyList<TipoGiroDto>> ObtenerTiposGiroAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<TerceroWODto>> BuscarTercerosAsync(string texto, int usuarioId, CancellationToken ct = default);
+    Task<int> CrearPagoExtraordinarioAsync(CrearPagoExtraordinarioDto dto, int usuarioId, CancellationToken ct = default);
+
+    // Catálogo de terceros (Sincronizador).
+    Task<DateTime?> ObtenerFechaCorteTercerosAsync(CancellationToken ct = default);
+    Task GuardarTercerosAsync(IReadOnlyList<TerceroWOInputDto> terceros, CancellationToken ct = default);
 
     /// <summary>Bancos/cajas de WO para elegir al confirmar un pago (no exige el permiso del módulo: lo usa el gerente general).</summary>
     Task<IReadOnlyList<CuentaBancoDto>> ObtenerBancosAsync(CancellationToken ct = default);

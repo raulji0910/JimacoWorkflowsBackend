@@ -143,6 +143,35 @@ public class JimacoAprobacionesClient(HttpClient http, string email, string pass
         await LanzarSiErrorAsync(response, ct);
     }
 
+    /// <summary>Cuándo se mandó por última vez el catálogo de terceros (null = nunca).</summary>
+    public async Task<DateTime?> ObtenerFechaCorteTercerosAsync(CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/sincronizacion/terceros/estado");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+
+        var texto = (await response.Content.ReadAsStringAsync(ct)).Trim();
+        return string.IsNullOrEmpty(texto) || texto == "null" ? null : System.Text.Json.JsonSerializer.Deserialize<DateTime?>(texto, JsonOpciones);
+    }
+
+    public async Task EnviarTercerosAsync(IReadOnlyList<TerceroWOInputDto> terceros, CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "api/sincronizacion/terceros")
+        {
+            Content = JsonContent.Create(terceros, options: JsonOpciones)
+        };
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+    }
+
     public async Task<IReadOnlyList<PendienteCreacionCEDto>> ListarPendientesCreacionCEAsync(CancellationToken ct = default)
     {
         await AsegurarTokenAsync(ct);

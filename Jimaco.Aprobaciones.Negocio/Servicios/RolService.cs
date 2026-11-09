@@ -13,7 +13,7 @@ public class RolService(AppDbContext db) : IRolService
             .OrderBy(r => r.Nombre)
             .Select(r => new RolDto(
                 r.Id, r.Nombre, r.Descripcion, r.Activo,
-                r.PuedeDevolverCualquierDocumento, r.PuedeGestionarAlistamiento, r.PuedeVerAlistamiento, r.PuedeVerCuentasPorPagar))
+                r.PuedeDevolverCualquierDocumento, r.PuedeGestionarAlistamiento, r.PuedeVerAlistamiento, r.PuedeVerCuentasPorPagar, r.PuedePagarCuentas))
             .ToListAsync(ct);
 
     public async Task<RolDto> CrearAsync(CrearRolDto dto, CancellationToken ct = default)
@@ -29,7 +29,8 @@ public class RolService(AppDbContext db) : IRolService
             PuedeDevolverCualquierDocumento = dto.PuedeDevolverCualquierDocumento,
             PuedeGestionarAlistamiento = dto.PuedeGestionarAlistamiento,
             PuedeVerAlistamiento = dto.PuedeVerAlistamiento,
-            PuedeVerCuentasPorPagar = dto.PuedeVerCuentasPorPagar
+            PuedeVerCuentasPorPagar = dto.PuedeVerCuentasPorPagar,
+            PuedePagarCuentas = dto.PuedePagarCuentas
         };
         db.Roles.Add(rol);
         await db.SaveChangesAsync(ct);
@@ -52,6 +53,7 @@ public class RolService(AppDbContext db) : IRolService
         rol.PuedeGestionarAlistamiento = dto.PuedeGestionarAlistamiento;
         rol.PuedeVerAlistamiento = dto.PuedeVerAlistamiento;
         rol.PuedeVerCuentasPorPagar = dto.PuedeVerCuentasPorPagar;
+        rol.PuedePagarCuentas = dto.PuedePagarCuentas;
         await db.SaveChangesAsync(ct);
 
         return MapearDto(rol);
@@ -59,5 +61,5 @@ public class RolService(AppDbContext db) : IRolService
 
     private static RolDto MapearDto(Rol rol) => new(
         rol.Id, rol.Nombre, rol.Descripcion, rol.Activo,
-        rol.PuedeDevolverCualquierDocumento, rol.PuedeGestionarAlistamiento, rol.PuedeVerAlistamiento, rol.PuedeVerCuentasPorPagar);
+        rol.PuedeDevolverCualquierDocumento, rol.PuedeGestionarAlistamiento, rol.PuedeVerAlistamiento, rol.PuedeVerCuentasPorPagar, rol.PuedePagarCuentas);
 }

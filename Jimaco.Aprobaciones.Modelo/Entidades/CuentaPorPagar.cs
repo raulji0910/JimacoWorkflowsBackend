@@ -178,6 +178,153 @@ public class PagoProveedor
     public int? IdAsientoContableCE { get; set; }
 
     public DateTime? FechaCreacionCE { get; set; }
+
+    // ---- Relación y lote (2026-11-09) ----
+
+    /// <summary>Relación de pagos con la que Gerencia Comercial lo mandó (un solo correo por relación). Null en pagos extraordinarios.</summary>
+    public int? RelacionPagoId { get; set; }
+    public RelacionPago? RelacionPago { get; set; }
+
+    /// <summary>Lote con el que el pagador lo pagó (un solo soporte para todo el lote).</summary>
+    public int? LotePagoId { get; set; }
+    public LotePago? LotePago { get; set; }
+
+    // ---- Pago extraordinario (2026-11-09): giro a un tercero sin factura ----
+
+    public bool EsExtraordinario { get; set; }
+
+    /// <summary>IdTercero de WO del beneficiario (solo extraordinarios — en los de facturas sale de las facturas).</summary>
+    public int? IdTerceroWO { get; set; }
+
+    [MaxLength(300)]
+    public string? NombreTercero { get; set; }
+
+    public int? TipoGiroId { get; set; }
+
+    [MaxLength(100)]
+    public string? NombreTipoGiro { get; set; }
+
+    /// <summary>Cuenta de WO que se debita en el CE (copiada del tipo de giro al crear el pago).</summary>
+    [MaxLength(20)]
+    public string? CodigoCuentaGiro { get; set; }
+
+    /// <summary>true = el débito abre un anticipo (se autorreferencia en AbonaADocumento, como hace Contabilidad con la 133005).</summary>
+    public bool GiroEsAnticipo { get; set; }
+
+    [MaxLength(300)]
+    public string? Concepto { get; set; }
+}
+
+/// <summary>
+/// Borrador de la relación de pagos de un usuario (2026-11-09): lo que Gerencia Comercial va marcando
+/// proveedor por proveedor antes de ratificar. Se guarda en el sistema (no en el navegador) para que
+/// no se pierda al cambiar de pantalla. Una fila por (usuario, proveedor).
+/// </summary>
+public class BorradorPagoProveedor
+{
+    public int Id { get; set; }
+
+    public int UsuarioId { get; set; }
+
+    [MaxLength(30)]
+    public required string Identificacion { get; set; }
+
+    [MaxLength(300)]
+    public string? NombreTercero { get; set; }
+
+    /// <summary>IdDocumentoDetalleWO de las facturas elegidas, separados por coma.</summary>
+    [MaxLength(4000)]
+    public string FacturasIds { get; set; } = "";
+
+    /// <summary>IdDocumentoDetalleWO de los anticipos a descontar, separados por coma.</summary>
+    [MaxLength(4000)]
+    public string AnticiposIds { get; set; } = "";
+
+    public DateTime FechaActualizacion { get; set; }
+}
+
+/// <summary>Lo que Gerencia Comercial ratificó de una vez: varias órdenes (una por proveedor), UN solo aviso al pagador.</summary>
+public class RelacionPago
+{
+    public int Id { get; set; }
+
+    public int Numero { get; set; }
+
+    public int CreadoPorUsuarioId { get; set; }
+
+    public DateTime Fecha { get; set; }
+
+    [MaxLength(500)]
+    public string? Observaciones { get; set; }
+
+    public ICollection<PagoProveedor> Pagos { get; set; } = [];
+}
+
+/// <summary>
+/// Lo que el pagador pagó de una vez (2026-11-09): mismo banco, misma fecha y UN solo soporte (PDF)
+/// para todos — por dentro cada orden sigue teniendo su propio CE en WO (un tercero por CE).
+/// </summary>
+public class LotePago
+{
+    public int Id { get; set; }
+
+    public int Numero { get; set; }
+
+    public int PagadoPorUsuarioId { get; set; }
+
+    public DateTime Fecha { get; set; }
+
+    public DateTime FechaPago { get; set; }
+
+    public int? IdCuentaBancoWO { get; set; }
+
+    [MaxLength(200)]
+    public string? NombreBanco { get; set; }
+
+    public decimal Total { get; set; }
+
+    [MaxLength(255)]
+    public string? NombreArchivoSoporte { get; set; }
+
+    [MaxLength(500)]
+    public string? RutaArchivoSoporte { get; set; }
+
+    /// <summary>true cuando ya salió el aviso de "lote terminado" (todos los CE creados o con conflicto) — una sola vez.</summary>
+    public bool AvisoTerminadoEnviado { get; set; }
+
+    public ICollection<PagoProveedor> Pagos { get; set; } = [];
+}
+
+/// <summary>Tipo de giro de un pago extraordinario → cuenta de WO que se debita (lista desplegable).</summary>
+public class TipoGiro
+{
+    public int Id { get; set; }
+
+    [MaxLength(100)]
+    public required string Nombre { get; set; }
+
+    [MaxLength(20)]
+    public required string CodigoCuenta { get; set; }
+
+    public bool EsAnticipo { get; set; }
+
+    public bool Activo { get; set; } = true;
+
+    public int Orden { get; set; }
+}
+
+/// <summary>Catálogo de terceros de WO (foto del Sincronizador) — para elegir el beneficiario de un pago extraordinario.</summary>
+public class TerceroWO
+{
+    public int Id { get; set; }
+
+    public int IdTerceroWO { get; set; }
+
+    [MaxLength(30)]
+    public required string Identificacion { get; set; }
+
+    [MaxLength(300)]
+    public required string Nombre { get; set; }
 }
 
 /// <summary>Cuándo se tomó la foto vigente (una sola fila) — para mostrar "Actualizado hace X minutos".</summary>
@@ -190,6 +337,9 @@ public class SincronizacionCuentasPorPagar
     public int Partidas { get; set; }
 
     public int Anticipos { get; set; }
+
+    /// <summary>Última vez que el Sincronizador mandó el catálogo de terceros (se manda cada pocas horas, no en cada corrida).</summary>
+    public DateTime? FechaCorteTerceros { get; set; }
 }
 
 /// <summary>

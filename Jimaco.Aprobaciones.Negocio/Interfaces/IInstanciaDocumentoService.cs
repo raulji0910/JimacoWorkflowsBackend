@@ -5,7 +5,9 @@ namespace Jimaco.Aprobaciones.Negocio.Interfaces;
 
 public interface IInstanciaDocumentoService
 {
-    Task<InstanciaDocumentoDetalleDto> CrearAsync(CrearInstanciaDocumentoDto dto, int usuarioId, CancellationToken ct = default);
+    // notificar=false (2026-11-09): las órdenes de pago a proveedor no avisan una por una — el aviso
+    // sale una sola vez por relación (o por pago extraordinario), ver CuentasPorPagarService.
+    Task<InstanciaDocumentoDetalleDto> CrearAsync(CrearInstanciaDocumentoDto dto, int usuarioId, CancellationToken ct = default, bool notificar = true);
 
     Task<InstanciaDocumentoDetalleDto> ObtenerAsync(int id, CancellationToken ct = default);
 
@@ -15,7 +17,11 @@ public interface IInstanciaDocumentoService
     /// <summary>Documentos creados por el usuario (incluye los Devueltos, que debe reenviar).</summary>
     Task<IReadOnlyList<InstanciaDocumentoResumenDto>> ListarMisDocumentosAsync(int usuarioId, CancellationToken ct = default);
 
-    Task<InstanciaDocumentoDetalleDto> EjecutarAccionAsync(int id, int usuarioId, EjecutarAccionDto dto, CancellationToken ct = default);
+    // omitirControlRol=true SOLO desde el menú "Pagos" (PagosService), que ya exigió Rol.PuedePagarCuentas.
+    Task<InstanciaDocumentoDetalleDto> EjecutarAccionAsync(int id, int usuarioId, EjecutarAccionDto dto, CancellationToken ct = default, bool omitirControlRol = false);
+
+    /// <summary>Si todas las órdenes del lote ya tienen su CE adjunto (o un conflicto), manda UN aviso de "lote terminado" — una sola vez.</summary>
+    Task NotificarLotePagoSiTerminoAsync(int lotePagoId, CancellationToken ct = default);
 
     /// <summary>El emisor reenvía un documento Devuelto — vuelve a entrar al flujo desde el primer paso.</summary>
     Task<InstanciaDocumentoDetalleDto> ReenviarAsync(int id, int usuarioId, CancellationToken ct = default);

@@ -6,6 +6,13 @@ public interface INotificacionService
     Task NotificarPasoAsync(int instanciaDocumentoId, int pasoFlujoId, CancellationToken ct = default);
 
     /// <summary>
+    /// Correo con cuerpo HTML armado por quien llama (2026-11-09: relación de pagos, pago
+    /// extraordinario, lote terminado) — si viene <paramref name="rutaFrontend"/> (ej. "/pagos"), se
+    /// agrega al final el enlace a esa pantalla del sistema.
+    /// </summary>
+    Task NotificarHtmlAsync(int? instanciaDocumentoId, int usuarioId, string asunto, string cuerpoHtml, string? rutaFrontend, CancellationToken ct = default);
+
+    /// <summary>
     /// Avisa a quien tiene el documento ACTUAL (ej. Gerencia General) que el Sincronizador no pudo
     /// encontrar el Comprobante de Egreso que Contabilidad escribió — para que decida si lo devuelve
     /// a Contabilidad a corregir, en vez de quedar esperando en silencio un aviso que nunca va a

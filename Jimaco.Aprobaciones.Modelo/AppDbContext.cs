@@ -39,6 +39,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<RenglonDocumentoVinculado> RenglonesDocumentoVinculado => Set<RenglonDocumentoVinculado>();
     public DbSet<RemisionRenglon> RemisionesRenglon => Set<RemisionRenglon>();
     public DbSet<HistorialDisponible> HistorialDisponible => Set<HistorialDisponible>();
+    public DbSet<BorradorPagoProveedor> BorradoresPagoProveedor => Set<BorradorPagoProveedor>();
+    public DbSet<RelacionPago> RelacionesPago => Set<RelacionPago>();
+    public DbSet<LotePago> LotesPago => Set<LotePago>();
+    public DbSet<TipoGiro> TiposGiro => Set<TipoGiro>();
+    public DbSet<TerceroWO> TercerosWO => Set<TerceroWO>();
     public DbSet<ComprobanteEgreso> ComprobantesEgreso => Set<ComprobanteEgreso>();
     public DbSet<RenglonComprobanteEgreso> RenglonesComprobanteEgreso => Set<RenglonComprobanteEgreso>();
     public DbSet<PartidaCuentaPorPagar> PartidasCuentaPorPagar => Set<PartidaCuentaPorPagar>();
@@ -276,6 +281,36 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 .WithMany(d => d.Renglones)
                 .HasForeignKey(r => r.DocumentoVinculadoId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<BorradorPagoProveedor>(e =>
+        {
+            e.Property(b => b.FechaActualizacion).HasConversion(ConversorFechaUtc);
+            e.HasIndex(b => new { b.UsuarioId, b.Identificacion }).IsUnique();
+        });
+
+        modelBuilder.Entity<RelacionPago>(e =>
+        {
+            e.Property(r => r.Fecha).HasConversion(ConversorFechaUtc);
+            e.HasIndex(r => r.Numero).IsUnique();
+        });
+
+        modelBuilder.Entity<LotePago>(e =>
+        {
+            e.Property(l => l.Fecha).HasConversion(ConversorFechaUtc);
+            e.Property(l => l.Total).HasPrecision(18, 2);
+            e.HasIndex(l => l.Numero).IsUnique();
+        });
+
+        modelBuilder.Entity<TipoGiro>(e =>
+        {
+            e.HasData(new TipoGiro { Id = 1, Nombre = "Anticipo a proveedores", CodigoCuenta = "133005", EsAnticipo = true, Activo = true, Orden = 1 });
+        });
+
+        modelBuilder.Entity<TerceroWO>(e =>
+        {
+            e.HasIndex(t => t.Identificacion);
+            e.HasIndex(t => t.IdTerceroWO).IsUnique();
         });
 
         modelBuilder.Entity<HistorialDisponible>(e =>

@@ -48,7 +48,7 @@ public class InstanciaDocumentoService(
                 $"No hay un flujo activo configurado para este caso (Valor={valor?.ToString() ?? "sin valor"}, FormaDePago={formaDePago ?? "sin dato"}).");
     }
 
-    public async Task<InstanciaDocumentoDetalleDto> CrearAsync(CrearInstanciaDocumentoDto dto, int usuarioId, CancellationToken ct = default)
+    public async Task<InstanciaDocumentoDetalleDto> CrearAsync(CrearInstanciaDocumentoDto dto, int usuarioId, CancellationToken ct = default, bool notificar = true)
     {
         // Idempotente para documentos sincronizados: el par (PrefijoOrigen, IdAsientoContableOrigen)
         // identifica de forma única una fila real de World Office. Si el Sincronizador vuelve a
@@ -210,7 +210,8 @@ public class InstanciaDocumentoService(
         });
 
         await db.SaveChangesAsync(ct);
-        await NotificarSinRomperAsync(() => notificacionService.NotificarPasoAsync(instancia.Id, primerPaso.Id, ct));
+        if (notificar)
+            await NotificarSinRomperAsync(() => notificacionService.NotificarPasoAsync(instancia.Id, primerPaso.Id, ct));
 
         return await ObtenerAsync(instancia.Id, ct);
     }
@@ -230,7 +231,10 @@ public class InstanciaDocumentoService(
             .Include(i => i.TipoDocumento)
             .Include(i => i.PasoActual).ThenInclude(p => p!.PasoFlujoRoles)
             .Where(i => i.Estado == EstadoInstanciaDocumento.EnProceso
-                        && i.PasoActual!.PasoFlujoRoles.Any(pr => rolesUsuario.Contains(pr.RolId)))
+                        && i.PasoActual!.PasoFlujoRoles.Any(pr => rolesUsuario.Contains(pr.RolId))
+                        // Las órdenes de pago tienen su propio menú ("Pagos", 2026-11-09) — pedido
+                        // explícito: no mezclarlas con OC y demás, se presta para confusiones.
+                        && i.TipoDocumento.PrefijoWorldOffice != CuentasPorPagarService.PrefijoPagoProveedor)
             .OrderBy(i => i.FechaCreacion)
             .ToListAsync(ct);
 
@@ -244,7 +248,8 @@ public class InstanciaDocumentoService(
         var instancias = await db.InstanciasDocumento
             .Include(i => i.TipoDocumento)
             .Include(i => i.PasoActual)
-            .Where(i => i.CreadoPorUsuarioId == usuarioId || (usuarioWO != null && i.SolicitanteWO == usuarioWO))
+            .Where(i => (i.CreadoPorUsuarioId == usuarioId || (usuarioWO != null && i.SolicitanteWO == usuarioWO))
+                        && i.TipoDocumento.PrefijoWorldOffice != CuentasPorPagarService.PrefijoPagoProveedor)
             .OrderByDescending(i => i.FechaCreacion)
             .ToListAsync(ct);
 
@@ -308,7 +313,7 @@ public class InstanciaDocumentoService(
         pago.ConflictoCreacionCE = null;
     }
 
-    public async Task<InstanciaDocumentoDetalleDto> EjecutarAccionAsync(int id, int usuarioId, EjecutarAccionDto dto, CancellationToken ct = default)
+    public async Task<InstanciaDocumentoDetalleDto> EjecutarAccionAsync(int id, int usuarioId, EjecutarAccionDto dto, CancellationToken ct = default, bool omitirControlRol = false)
     {
         var instancia = await db.InstanciasDocumento
             .Include(i => i.TipoDocumento)
@@ -330,9 +335,12 @@ public class InstanciaDocumentoService(
 
         var paso = instancia.PasoActual;
 
-        var rolesUsuario = await ObtenerRolesIdsAsync(usuarioId, ct);
-        if (!paso.PasoFlujoRoles.Any(pr => rolesUsuario.Contains(pr.RolId)))
-            throw new UnauthorizedAccessException("No tenés un rol habilitado para actuar en este paso.");
+        if (!omitirControlRol)
+        {
+            var rolesUsuario = await ObtenerRolesIdsAsync(usuarioId, ct);
+            if (!paso.PasoFlujoRoles.Any(pr => rolesUsuario.Contains(pr.RolId)))
+                throw new UnauthorizedAccessException("No tenés un rol habilitado para actuar en este paso.");
+        }
 
         var ahora = timeProvider.GetUtcNow().UtcDateTime;
 
@@ -879,6 +887,7 @@ public class InstanciaDocumentoService(
         var instancia = await db.InstanciasDocumento
             .Include(i => i.TipoDocumento)
             .Include(i => i.ComprobanteEgreso)
+            .Include(i => i.PagoProveedor)
             .FirstOrDefaultAsync(i => i.Id == instanciaDocumentoId, ct)
             ?? throw new KeyNotFoundException("Documento no encontrado.");
 
@@ -918,9 +927,55 @@ public class InstanciaDocumentoService(
         instancia.ConflictoComprobanteEgresoWO = null;
         await db.SaveChangesAsync(ct);
 
+        // Orden pagada dentro de un lote (2026-11-09): nada de un correo por orden — sale UNO solo
+        // cuando el lote entero terminó (todos los CE creados o con conflicto).
+        if (instancia.PagoProveedor?.LotePagoId is int lotePagoId)
+        {
+            await NotificarLotePagoSiTerminoAsync(lotePagoId, ct);
+            return;
+        }
+
         // Ahora sí — el comprobante ya está adjunto, se dispara la notificación al paso siguiente
         // (o al emisor si quedó Completado) que NotificarSegunAccionAsync se había saltado.
         await NotificarAvanceTrasAprobarAsync(instancia, ct);
+    }
+
+    public async Task NotificarLotePagoSiTerminoAsync(int lotePagoId, CancellationToken ct = default)
+    {
+        var lote = await db.LotesPago
+            .Include(l => l.Pagos).ThenInclude(p => p.InstanciaDocumento).ThenInclude(i => i.ComprobanteEgreso)
+            .FirstOrDefaultAsync(l => l.Id == lotePagoId, ct);
+        if (lote is null || lote.AvisoTerminadoEnviado) return;
+
+        // Terminado = cada orden tiene su CE ya adjunto, o quedó con un conflicto (que ya avisó aparte).
+        var terminado = lote.Pagos.All(p => p.InstanciaDocumento.ComprobanteEgreso is not null || p.ConflictoCreacionCE is not null);
+        if (!terminado) return;
+
+        lote.AvisoTerminadoEnviado = true;
+        await db.SaveChangesAsync(ct);
+
+        var filas = string.Concat(lote.Pagos.OrderBy(p => p.NombreTercero ?? p.InstanciaDocumento.Proveedor).Select(p =>
+        {
+            var ce = p.ConflictoCreacionCE is not null
+                ? $"<span style=\"color:#b3261e\">Sin CE: {System.Net.WebUtility.HtmlEncode(p.ConflictoCreacionCE)}</span>"
+                : $"{p.PrefijoCE} {p.NumeroCE:0}";
+            return $"<tr><td>{System.Net.WebUtility.HtmlEncode(p.NombreTercero ?? p.InstanciaDocumento.Proveedor ?? p.Identificacion)}</td>" +
+                   $"<td style=\"text-align:right\">{(p.InstanciaDocumento.Valor ?? 0):N0}</td><td>{ce}</td></tr>";
+        }));
+        var conflictos = lote.Pagos.Count(p => p.ConflictoCreacionCE is not null);
+        var asunto = $"[Jimaco Aprobaciones] Lote de pago {lote.Numero} pagado" + (conflictos > 0 ? $" ({conflictos} sin comprobante)" : "");
+        var cuerpo = $"<p>El lote de pago <b>{lote.Numero}</b> ({lote.FechaPago:dd/MM/yyyy}, {System.Net.WebUtility.HtmlEncode(lote.NombreBanco ?? "sin banco")}) " +
+                     $"quedó registrado en World Office por <b>${lote.Total:N0}</b>.</p>" +
+                     "<table border=\"1\" cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse:collapse\">" +
+                     $"<tr><th>Tercero</th><th>Valor</th><th>Comprobante</th></tr>{filas}</table>";
+
+        var destinatarios = lote.Pagos.Select(p => p.InstanciaDocumento.CreadoPorUsuarioId)
+            .Append(lote.PagadoPorUsuarioId)
+            .Distinct()
+            .ToList();
+        foreach (var usuarioId in destinatarios)
+            await NotificarSinRomperAsync(() => notificacionService.NotificarHtmlAsync(
+                lote.Pagos.First().InstanciaDocumentoId, usuarioId, asunto, cuerpo, "/pagos", ct));
     }
 
     public async Task ReportarConflictoComprobanteEgresoAsync(int instanciaDocumentoId, string mensaje, CancellationToken ct = default)
@@ -1128,7 +1183,8 @@ public class InstanciaDocumentoService(
             .Include(i => i.DocumentosVinculados).ThenInclude(d => d.Renglones)
             .Include(i => i.ComprobanteEgreso).ThenInclude(c => c!.Renglones)
             .Include(i => i.SoportePagoAdjunto)
-            .Include(i => i.PagoProveedor)
+            .Include(i => i.PagoProveedor).ThenInclude(p => p!.RelacionPago)
+            .Include(i => i.PagoProveedor).ThenInclude(p => p!.LotePago)
             .Include(i => i.FacturasPagoProveedor)
             .Include(i => i.AnticiposPagoProveedor)
             .AsSplitQuery();
@@ -1137,14 +1193,15 @@ public class InstanciaDocumentoService(
     {
         if (i.PagoProveedor is not { } p) return null;
 
-        var totalFacturas = i.FacturasPagoProveedor.Sum(f => f.Valor);
+        var totalFacturas = p.EsExtraordinario ? (i.Valor ?? 0) : i.FacturasPagoProveedor.Sum(f => f.Valor);
         var totalAnticipos = i.AnticiposPagoProveedor.Sum(a => a.Valor);
         return new PagoProveedorDto(
             p.Identificacion, totalFacturas, totalAnticipos, totalFacturas - totalAnticipos,
             i.AnticiposPagoProveedor.OrderBy(a => a.Fecha).Select(a => new AnticipoPagoProveedorDto(
                 a.IdDocumentoDetalleWO, a.Prefijo, a.NumeroDocumento, a.Fecha, a.Nota, a.Valor)).ToList(),
             p.IdCuentaBancoWO, p.NombreBanco, p.FechaPago, p.PendienteCreacionCE, p.ConflictoCreacionCE,
-            p.PrefijoCE, p.NumeroCE, p.FechaCreacionCE);
+            p.PrefijoCE, p.NumeroCE, p.FechaCreacionCE,
+            p.EsExtraordinario, p.NombreTercero, p.NombreTipoGiro, p.Concepto, p.RelacionPago?.Numero, p.LotePago?.Numero);
     }
 
     private static InstanciaDocumentoResumenDto MapearResumenDto(InstanciaDocumento i) => new(

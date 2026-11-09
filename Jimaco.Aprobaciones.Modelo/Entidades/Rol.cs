@@ -55,6 +55,13 @@ public class Rol
     /// </summary>
     public bool PuedeVerCuentasPorPagar { get; set; }
 
+    /// <summary>
+    /// "Pagador de cuentas" (2026-11-09): menú propio "Pagos" donde se ven las relaciones de pago que
+    /// mandó Gerencia Comercial (y los pagos extraordinarios), se eligen las que se pagan como un lote
+    /// con UN solo soporte, y se rechaza lo que no. Pensado para Gerencia General.
+    /// </summary>
+    public bool PuedePagarCuentas { get; set; }
+
     public ICollection<UsuarioRol> UsuarioRoles { get; set; } = [];
     public ICollection<PasoFlujoRol> PasoFlujoRoles { get; set; } = [];
 }

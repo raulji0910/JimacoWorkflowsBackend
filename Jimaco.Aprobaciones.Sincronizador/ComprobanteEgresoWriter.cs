@@ -84,6 +84,9 @@ public class ComprobanteEgresoWriter(string connectionString, ConfiguracionCE co
         if (existente is not null)
             return new CreacionCEResultado(ResultadoCreacionCE.YaExistia, existente.Prefijo, existente.DocumentoNumero, existente.IdAsientoContable);
 
+        if (pago.Giro is { } giro)
+            return await CrearGiroAsync(conexion, pago, giro, ct);
+
         if (pago.Facturas.Count == 0)
             return CreacionCEResultado.ConConflicto("El pago no tiene facturas.");
         if (pago.Neto < 0)
@@ -211,6 +214,95 @@ public class ComprobanteEgresoWriter(string connectionString, ConfiguracionCE co
         return new CreacionCEResultado(ResultadoCreacionCE.Creado, config.Prefijo, numero, idAsiento);
     }
 
+    /// <summary>
+    /// Pago extraordinario (2026-11-09): giro a un tercero sin factura. DÉBITO a la cuenta del tipo de
+    /// giro (si es anticipo, el renglón se autorreferencia en <c>AbonaADocumento</c> — así lo graba
+    /// Contabilidad en la 133005 y así queda abierto para cruzarlo después contra la factura), CRÉDITO
+    /// al banco. Mismo número, encabezado, marca y control de cuadre que el CE de facturas.
+    /// </summary>
+    private async Task<CreacionCEResultado> CrearGiroAsync(SqlConnection conexion, PendienteCreacionCEDto pago, GiroCreacionCEDto giro, CancellationToken ct)
+    {
+        if (giro.Valor <= 0 || giro.Valor != pago.Neto)
+            return CreacionCEResultado.ConConflicto($"El valor del giro no cuadra ({giro.Valor:N0} vs {pago.Neto:N0}).");
+        if (pago.IdCuentaBancoWO is null)
+            return CreacionCEResultado.ConConflicto("No se eligió el banco del pago.");
+
+        await using var tx = (SqlTransaction)await conexion.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+
+        var identificacionWO = await conexion.ExecuteScalarAsync<string?>(new CommandDefinition(
+            "SELECT LTRIM(RTRIM(Identificacion)) FROM Terceros WHERE IdTercero = @Id;", new { Id = giro.IdTerceroWO }, tx, cancellationToken: ct));
+        if (identificacionWO is null)
+            return await Abortar(tx, "El tercero del pago ya no existe en World Office.", ct);
+        if (!string.Equals(identificacionWO, giro.Identificacion.Trim(), StringComparison.OrdinalIgnoreCase))
+            return await Abortar(tx, $"El tercero de World Office cambió de identificación ({identificacionWO}, se esperaba {giro.Identificacion}).", ct);
+
+        // Solo cuentas auxiliares (hoja) activas — WO no deja mover cuentas de mayor.
+        var idCuenta = await conexion.ExecuteScalarAsync<int?>(new CommandDefinition("""
+            SELECT TOP 1 c.IdCuentaContable FROM CuentasContables c
+            WHERE LTRIM(RTRIM(c.CódigoCuentaContable)) = @Codigo AND ISNULL(c.Inactivo, 0) = 0
+              AND NOT EXISTS (SELECT 1 FROM CuentasContables h WHERE h.SubCuentaContableDe = c.IdCuentaContable);
+            """, new { Codigo = giro.CodigoCuenta.Trim() }, tx, cancellationToken: ct));
+        if (idCuenta is null)
+            return await Abortar(tx, $"La cuenta {giro.CodigoCuenta} del tipo de giro \"{giro.TipoGiro}\" no es una cuenta auxiliar activa en World Office.", ct);
+
+        var idDireccion = await conexion.ExecuteScalarAsync<int?>(new CommandDefinition("""
+            SELECT TOP 1 IdTerceroDireccion FROM [Terceros - Direcciones]
+            WHERE IdTercero = @IdTercero ORDER BY CASE WHEN ISNULL(senDirecPpal, 0) <> 0 THEN 0 ELSE 1 END, IdTerceroDireccion;
+            """, new { IdTercero = giro.IdTerceroWO }, tx, cancellationToken: ct));
+
+        var numero = await conexion.ExecuteScalarAsync<decimal>(new CommandDefinition("""
+            SELECT ISNULL(MAX(DocumentoNúmero), 0) + 1
+            FROM [CuentasContables - Asientos] WITH (UPDLOCK, HOLDLOCK)
+            WHERE IdEmpresa = 1 AND IdCuentaContableDocumento = 'ce' AND prefijo = @Prefijo;
+            """, new { config.Prefijo }, tx, cancellationToken: ct));
+
+        var largoNotaEncabezado = await LargoColumnaAsync(conexion, tx, "[dbo].[CuentasContables - Asientos]", "Nota", ct);
+        var largoNotaRenglon = await LargoColumnaAsync(conexion, tx, "[dbo].[CuentasContables - Asientos - Detalles]", "Nota", ct);
+
+        var marca = Marca(pago.InstanciaDocumentoId);
+        var notaEncabezado = Recortar($"{giro.TipoGiro.ToUpperInvariant()} - {giro.Concepto} - ORDEN DE PAGO {pago.NumeroReferencia} {marca}", largoNotaEncabezado);
+        if (!notaEncabezado.Contains(marca))
+            notaEncabezado = Recortar($"{giro.TipoGiro.ToUpperInvariant()} {marca}", largoNotaEncabezado);
+        var fecha = pago.FechaPago.Date;
+
+        var idAsiento = await conexion.ExecuteScalarAsync<int>(new CommandDefinition("""
+            INSERT INTO [CuentasContables - Asientos]
+                (IdEmpresa, IdCuentaContableDocumento, prefijo, DocumentoNúmero, Fecha,
+                 IdTerceroExterno, IdDirecciónExterno, IdTerceroInterno, Nota, NomPc,
+                 Verificado, senAnulado, senBloqueado, ChkImpreso, IdUsuario, IdUsuarioWO, senElectronico)
+            VALUES
+                (1, 'ce', @Prefijo, @Numero, @Fecha,
+                 @IdTercero, @IdDireccion, @IdElabora, @Nota, @NomPc,
+                 0, 0, 0, 0, @Usuario, @Usuario, 0);
+            SELECT CAST(SCOPE_IDENTITY() AS int);
+            """, new
+        {
+            config.Prefijo, Numero = numero, Fecha = fecha, IdTercero = giro.IdTerceroWO, IdDireccion = idDireccion,
+            IdElabora = config.IdTerceroElabora, Nota = notaEncabezado, config.NomPc, Usuario = config.UsuarioWO
+        }, tx, cancellationToken: ct));
+
+        var notaRenglon = Recortar($"{giro.TipoGiro.ToUpperInvariant()} - {giro.Concepto}", largoNotaRenglon);
+        var idRenglonGiro = await InsertarRenglonAsync(conexion, tx, idAsiento, idCuenta.Value, debito: giro.Valor, credito: 0, giro.IdTerceroWO,
+            abonaA: null, valorAbono: null, fecha, notaRenglon, ct);
+        if (giro.EsAnticipo)
+            await conexion.ExecuteAsync(new CommandDefinition(
+                "UPDATE [CuentasContables - Asientos - Detalles] SET AbonaADocumento = @Id WHERE IdDocumentoDetalle = @Id;",
+                new { Id = idRenglonGiro }, tx, cancellationToken: ct));
+
+        await InsertarRenglonAsync(conexion, tx, idAsiento, pago.IdCuentaBancoWO.Value, debito: 0, credito: giro.Valor, giro.IdTerceroWO,
+            abonaA: null, valorAbono: null, fecha, Recortar(notaEncabezado, largoNotaRenglon), ct);
+
+        var cuadre = await conexion.QueryFirstAsync<(decimal Debito, decimal Credito)>(new CommandDefinition("""
+            SELECT ISNULL(SUM(Débito), 0), ISNULL(SUM(Crédito), 0)
+            FROM [CuentasContables - Asientos - Detalles] WHERE IdAsientoContable = @Id;
+            """, new { Id = idAsiento }, tx, cancellationToken: ct));
+        if (cuadre.Debito != cuadre.Credito || cuadre.Debito != giro.Valor)
+            return await Abortar(tx, $"El comprobante no cuadró (débitos {cuadre.Debito:N0}, créditos {cuadre.Credito:N0}). No se grabó nada.", ct);
+
+        await tx.CommitAsync(ct);
+        return new CreacionCEResultado(ResultadoCreacionCE.Creado, config.Prefijo, numero, idAsiento);
+    }
+
     private static async Task<CreacionCEResultado> Abortar(SqlTransaction tx, string mensaje, CancellationToken ct)
     {
         await tx.RollbackAsync(ct);
@@ -232,15 +324,17 @@ public class ComprobanteEgresoWriter(string connectionString, ConfiguracionCE co
             GROUP BY o.IdCuentaContable, o.IdTercero;
             """, new { Id = idDocumentoDetalle }, tx, cancellationToken: ct));
 
-    private static Task InsertarRenglonAsync(SqlConnection conexion, SqlTransaction tx, int idAsiento, int idCuenta,
+    /// <summary>Inserta UN renglón (los triggers de WO leen una sola fila) y devuelve su IdDocumentoDetalle.</summary>
+    private static Task<int> InsertarRenglonAsync(SqlConnection conexion, SqlTransaction tx, int idAsiento, int idCuenta,
         decimal debito, decimal credito, int idTercero, int? abonaA, decimal? valorAbono, DateTime fecha, string nota, CancellationToken ct) =>
-        conexion.ExecuteAsync(new CommandDefinition("""
+        conexion.ExecuteScalarAsync<int>(new CommandDefinition("""
             INSERT INTO [CuentasContables - Asientos - Detalles]
                 (IdAsientoContable, IdCuentaContable, Débito, Crédito, IdTercero, AbonaADocumento,
                  Vencimiento, Nota, ValorAbono, ValorExtranjero, TRMFac, Verificado, SenEntregado, SenEnviadoConcil)
             VALUES
                 (@IdAsiento, @IdCuenta, @Debito, @Credito, @IdTercero, @AbonaA,
                  @Fecha, @Nota, @ValorAbono, 0, 0, 0, 0, 0);
+            SELECT CAST(SCOPE_IDENTITY() AS int);
             """, new
         {
             IdAsiento = idAsiento, IdCuenta = idCuenta, Debito = debito, Credito = credito, IdTercero = idTercero,

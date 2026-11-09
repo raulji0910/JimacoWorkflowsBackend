@@ -145,7 +145,13 @@ public record PagoProveedorDto(
     string? ConflictoCreacionCE,
     string? PrefijoCE,
     decimal? NumeroCE,
-    DateTime? FechaCreacionCE);
+    DateTime? FechaCreacionCE,
+    bool EsExtraordinario = false,
+    string? NombreTercero = null,
+    string? NombreTipoGiro = null,
+    string? Concepto = null,
+    int? NumeroRelacion = null,
+    int? NumeroLote = null);
 
 // ---- Creación del CE en WO (lo usa solo el Sincronizador) ----
 
@@ -161,7 +167,12 @@ public record PendienteCreacionCEDto(
     int? IdCuentaBancoWO,
     decimal Neto,
     IReadOnlyList<FacturaCreacionCEDto> Facturas,
-    IReadOnlyList<AnticipoCreacionCEDto> Anticipos);
+    IReadOnlyList<AnticipoCreacionCEDto> Anticipos,
+    // Solo pagos extraordinarios (sin facturas): a quién, qué cuenta se debita y por qué.
+    GiroCreacionCEDto? Giro = null);
+
+/// <summary>Pago extraordinario para el CE: débito a la cuenta del tipo de giro (autorreferenciado si es anticipo), crédito al banco.</summary>
+public record GiroCreacionCEDto(int IdTerceroWO, string Identificacion, string CodigoCuenta, bool EsAnticipo, string TipoGiro, string Concepto, decimal Valor);
 
 public record CECreadoDto(string Prefijo, decimal Numero, int IdAsientoContable);
 
@@ -175,3 +186,65 @@ public record FacturaPagoProveedorDto(
     DateTime? Vencimiento,
     decimal Valor,
     string? CodigoCuenta);
+
+// ---- Relación de pagos (2026-11-09): Gerencia Comercial marca facturas de varios proveedores en
+// un borrador, revisa y ratifica de una vez → una orden por proveedor y UN solo correo al pagador. ----
+
+/// <summary>Lo elegido de UN proveedor en el borrador. Sin facturas = se quita el proveedor del borrador.</summary>
+public record GuardarBorradorProveedorDto(IReadOnlyList<int> IdsFacturas, IReadOnlyList<int> IdsAnticipos);
+
+public record BorradorFacturaDto(int IdDocumentoDetalleWO, string Etiqueta, string? NumeroDocumentoExterno, DateTime? Vencimiento, decimal Valor, bool Disponible);
+
+public record BorradorAnticipoDto(int IdDocumentoDetalleWO, string Etiqueta, string? Nota, decimal Valor, bool Disponible);
+
+public record BorradorProveedorDto(
+    string Identificacion,
+    string Nombre,
+    IReadOnlyList<BorradorFacturaDto> Facturas,
+    IReadOnlyList<BorradorAnticipoDto> Anticipos,
+    decimal TotalFacturas,
+    decimal TotalAnticipos,
+    decimal Neto,
+    // Si algo del borrador ya no se puede pagar (WO lo cruzó, o ya está en otro pago) — hay que corregirlo antes de ratificar.
+    string? Problema);
+
+public record RelacionBorradorDto(IReadOnlyList<BorradorProveedorDto> Proveedores, int Facturas, decimal Total);
+
+public record RatificarRelacionDto(string? Observaciones);
+
+public record RelacionCreadaDto(int Numero, int Ordenes, decimal Total);
+
+// ---- Pago extraordinario (2026-11-09) ----
+
+public record TipoGiroDto(int Id, string Nombre, bool EsAnticipo);
+
+public record TerceroWODto(int IdTerceroWO, string Identificacion, string Nombre);
+
+public record TerceroWOInputDto(int IdTerceroWO, string Identificacion, string Nombre);
+
+public record CrearPagoExtraordinarioDto(int IdTerceroWO, decimal Valor, int TipoGiroId, string Concepto);
+
+// ---- Menú "Pagos" del pagador (2026-11-09) ----
+
+public record LineaOrdenPagoDto(string Etiqueta, string? Detalle, decimal Valor);
+
+public record OrdenPagoPendienteDto(
+    int InstanciaDocumentoId,
+    string? NumeroReferencia,
+    bool EsExtraordinario,
+    string Identificacion,
+    string Tercero,
+    DateTime FechaCreacion,
+    string? CreadoPor,
+    int? NumeroRelacion,
+    string? Observaciones,
+    IReadOnlyList<LineaOrdenPagoDto> Lineas,
+    decimal Neto);
+
+public record RechazarOrdenPagoDto(string Comentario);
+
+public record LoteOrdenDto(int InstanciaDocumentoId, string? NumeroReferencia, string Tercero, bool EsExtraordinario, decimal Neto,
+    string? PrefijoCE, decimal? NumeroCE, bool PendienteCreacionCE, string? ConflictoCreacionCE);
+
+public record LotePagoDto(int Id, int Numero, DateTime Fecha, DateTime FechaPago, string? NombreBanco, decimal Total, string? PagadoPor,
+    bool TieneSoporte, IReadOnlyList<LoteOrdenDto> Ordenes);

@@ -21,6 +21,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IInstanciaDocumentoService, InstanciaDocumentoService>();
         services.AddScoped<IHojaAlistamientoService, HojaAlistamientoService>();
         services.AddScoped<ICuentasPorPagarService, CuentasPorPagarService>();
+        services.AddScoped<IPagosService, PagosService>();
         services.AddSingleton<IDocumentoPdfGenerador, DocumentoPdfGenerador>();
         return services;
     }

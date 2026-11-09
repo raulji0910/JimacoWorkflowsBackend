@@ -423,6 +423,26 @@ public class WorldOfficeReader(string connectionString)
     /// bancos aparte — cada banco es una cuenta contable hoja y activa (ej. 11100502 BANCOLOMBIA CTA
     /// CTE) bajo alguno de <paramref name="prefijosCuenta"/> (1105 caja, 1110 bancos).
     /// </summary>
+    /// <summary>
+    /// Catálogo de terceros (2026-11-09) — para elegir el beneficiario de un pago extraordinario.
+    /// El nombre para mostrar es TerceroRow.NombreCompleto (Terceros no tiene esa columna).
+    /// </summary>
+    public async Task<IReadOnlyList<TerceroRow>> ObtenerTercerosAsync(CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT t.IdTercero,
+                   LTRIM(RTRIM(t.Identificacion)) AS Identificacion,
+                   LTRIM(RTRIM(t.Nombre)) AS Nombre,
+                   LTRIM(RTRIM(t.Apellidos)) AS Apellidos
+            FROM Terceros t
+            WHERE t.Identificacion IS NOT NULL AND LTRIM(RTRIM(t.Identificacion)) <> '';
+            """;
+
+        await using var conexion = new SqlConnection(connectionString);
+        var filas = await conexion.QueryAsync<TerceroRow>(new CommandDefinition(sql, cancellationToken: ct));
+        return filas.ToList();
+    }
+
     public async Task<IReadOnlyList<CuentaContableRow>> ObtenerCuentasBancoAsync(IReadOnlyList<string> prefijosCuenta, CancellationToken ct = default)
     {
         if (prefijosCuenta.Count == 0) return [];

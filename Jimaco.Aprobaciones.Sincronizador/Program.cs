@@ -604,6 +604,31 @@ else
     }
 }
 
+// ---- Catálogo de terceros de WO (2026-11-09) — para el beneficiario de un pago extraordinario.
+// Son miles de filas: se manda solo si la última vez fue hace más de CuentasPorPagar:HorasTerceros
+// (default 6), no en cada corrida. Un error acá no frena nada más. ----
+if (!(bool.TryParse(config["CuentasPorPagar:Activo"], out var cxpTercerosActivo) && !cxpTercerosActivo))
+{
+    try
+    {
+        var horasTerceros = double.TryParse(config["CuentasPorPagar:HorasTerceros"], System.Globalization.CultureInfo.InvariantCulture, out var h) ? h : 6;
+        var ultimaTerceros = await jimaco.ObtenerFechaCorteTercerosAsync();
+        if (ultimaTerceros is null || DateTime.UtcNow - DateTime.SpecifyKind(ultimaTerceros.Value, DateTimeKind.Utc) > TimeSpan.FromHours(horasTerceros))
+        {
+            var terceros = await lector.ObtenerTercerosAsync();
+            await jimaco.EnviarTercerosAsync(terceros
+                .Where(t => !string.IsNullOrWhiteSpace(t.Identificacion))
+                .Select(t => new TerceroWOInputDto(t.IdTercero, t.Identificacion!.Trim(), t.NombreCompleto.Trim()))
+                .ToList());
+            Console.WriteLine($"[{DateTime.Now:s}] Catálogo de terceros enviado: {terceros.Count} tercero(s).");
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"[{DateTime.Now:s}] ERROR enviando el catálogo de terceros: {ex.Message}");
+    }
+}
+
 Console.WriteLine($"[{DateTime.Now:s}] Listo.");
 
 // Texto libre escrito a mano ("16113", "COT16113"...) normalizado a la misma forma canónica que

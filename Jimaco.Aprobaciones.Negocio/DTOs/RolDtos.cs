@@ -8,7 +8,8 @@ public record RolDto(
     bool PuedeDevolverCualquierDocumento,
     bool PuedeGestionarAlistamiento,
     bool PuedeVerAlistamiento,
-    bool PuedeVerCuentasPorPagar);
+    bool PuedeVerCuentasPorPagar,
+    bool PuedePagarCuentas = false);
 
 public record CrearRolDto(
     string Nombre,
@@ -16,7 +17,8 @@ public record CrearRolDto(
     bool PuedeDevolverCualquierDocumento = false,
     bool PuedeGestionarAlistamiento = false,
     bool PuedeVerAlistamiento = false,
-    bool PuedeVerCuentasPorPagar = false);
+    bool PuedeVerCuentasPorPagar = false,
+    bool PuedePagarCuentas = false);
 
 public record ActualizarRolDto(
     string Nombre,
@@ -25,4 +27,5 @@ public record ActualizarRolDto(
     bool PuedeDevolverCualquierDocumento,
     bool PuedeGestionarAlistamiento,
     bool PuedeVerAlistamiento,
-    bool PuedeVerCuentasPorPagar = false);
+    bool PuedeVerCuentasPorPagar = false,
+    bool PuedePagarCuentas = false);

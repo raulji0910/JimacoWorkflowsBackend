@@ -102,6 +102,20 @@ public class SincronizacionController(IInstanciaDocumentoService instanciaServic
 
     // ---- Creación del CE en WO para pagos a proveedor confirmados (2026-11-06). ----
 
+    // Catálogo de terceros de WO (2026-11-09) — para el beneficiario de un pago extraordinario. El
+    // Sincronizador pregunta cuándo fue la última vez y lo manda solo cada pocas horas.
+    [HttpGet("terceros/estado")]
+    public async Task<ActionResult<DateTime?>> EstadoTerceros(CancellationToken ct) =>
+        Ok(await cuentasPorPagarService.ObtenerFechaCorteTercerosAsync(ct));
+
+    [HttpPost("terceros")]
+    [RequestSizeLimit(60_000_000)]
+    public async Task<IActionResult> GuardarTerceros(IReadOnlyList<TerceroWOInputDto> dto, CancellationToken ct)
+    {
+        await cuentasPorPagarService.GuardarTercerosAsync(dto, ct);
+        return Ok();
+    }
+
     [HttpGet("pagos-proveedor/pendientes-ce")]
     public async Task<ActionResult<IReadOnlyList<PendienteCreacionCEDto>>> ListarPendientesCreacionCE(CancellationToken ct) =>
         Ok(await cuentasPorPagarService.ListarPendientesCreacionCEAsync(ct));

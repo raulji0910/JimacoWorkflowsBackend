@@ -25,7 +25,31 @@ public class CuentasPorPagarController(ICuentasPorPagarService cuentasPorPagarSe
     public async Task<ActionResult<IReadOnlyList<CuentaBancoDto>>> Bancos(CancellationToken ct) =>
         Ok(await cuentasPorPagarService.ObtenerBancosAsync(ct));
 
-    [HttpPost("pagos")]
-    public async Task<ActionResult<int>> CrearPago(CrearPagoProveedorDto dto, CancellationToken ct) =>
-        Ok(await cuentasPorPagarService.CrearPagoAsync(dto, UsuarioActualId, ct));
+    // ---- Relación de pagos (2026-11-09): reemplaza el viejo "POST pagos" (un correo por proveedor). ----
+
+    [HttpGet("relacion")]
+    public async Task<ActionResult<RelacionBorradorDto>> Relacion(CancellationToken ct) =>
+        Ok(await cuentasPorPagarService.ObtenerBorradorAsync(UsuarioActualId, ct));
+
+    [HttpPut("relacion/proveedores/{identificacion}")]
+    public async Task<ActionResult<RelacionBorradorDto>> GuardarEnRelacion(string identificacion, GuardarBorradorProveedorDto dto, CancellationToken ct) =>
+        Ok(await cuentasPorPagarService.GuardarBorradorProveedorAsync(identificacion, dto, UsuarioActualId, ct));
+
+    [HttpPost("relacion/ratificar")]
+    public async Task<ActionResult<RelacionCreadaDto>> Ratificar(RatificarRelacionDto dto) =>
+        Ok(await cuentasPorPagarService.RatificarRelacionAsync(dto, UsuarioActualId, CancellationToken.None));
+
+    // ---- Pago extraordinario ----
+
+    [HttpGet("tipos-giro")]
+    public async Task<ActionResult<IReadOnlyList<TipoGiroDto>>> TiposGiro(CancellationToken ct) =>
+        Ok(await cuentasPorPagarService.ObtenerTiposGiroAsync(ct));
+
+    [HttpGet("terceros")]
+    public async Task<ActionResult<IReadOnlyList<TerceroWODto>>> Terceros([FromQuery] string q, CancellationToken ct) =>
+        Ok(await cuentasPorPagarService.BuscarTercerosAsync(q, UsuarioActualId, ct));
+
+    [HttpPost("extraordinarios")]
+    public async Task<ActionResult<int>> CrearExtraordinario(CrearPagoExtraordinarioDto dto) =>
+        Ok(await cuentasPorPagarService.CrearPagoExtraordinarioAsync(dto, UsuarioActualId, CancellationToken.None));
 }

@@ -12,4 +12,6 @@ public record LoginResponseDto(string Token, string Nombre, string Email, IReadO
     bool PuedeGestionarAlistamiento,
     bool PuedeVerAlistamiento,
     // Módulo de Cuentas por Pagar — ver Rol.PuedeVerCuentasPorPagar.
-    bool PuedeVerCuentasPorPagar);
+    bool PuedeVerCuentasPorPagar,
+    // Menú "Pagos" — ver Rol.PuedePagarCuentas.
+    bool PuedePagarCuentas = false);
