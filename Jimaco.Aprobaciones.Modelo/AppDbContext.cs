@@ -38,6 +38,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<DocumentoVinculado> DocumentosVinculados => Set<DocumentoVinculado>();
     public DbSet<RenglonDocumentoVinculado> RenglonesDocumentoVinculado => Set<RenglonDocumentoVinculado>();
     public DbSet<RemisionRenglon> RemisionesRenglon => Set<RemisionRenglon>();
+    public DbSet<HistorialDisponible> HistorialDisponible => Set<HistorialDisponible>();
     public DbSet<ComprobanteEgreso> ComprobantesEgreso => Set<ComprobanteEgreso>();
     public DbSet<RenglonComprobanteEgreso> RenglonesComprobanteEgreso => Set<RenglonComprobanteEgreso>();
     public DbSet<PartidaCuentaPorPagar> PartidasCuentaPorPagar => Set<PartidaCuentaPorPagar>();
@@ -275,6 +276,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 .WithMany(d => d.Renglones)
                 .HasForeignKey(r => r.DocumentoVinculadoId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<HistorialDisponible>(e =>
+        {
+            e.Property(h => h.Fecha).HasConversion(ConversorFechaUtc);
+            e.Property(h => h.CantidadAnterior).HasPrecision(18, 3);
+            e.Property(h => h.CantidadNueva).HasPrecision(18, 3);
+            e.Property(h => h.CantidadPorRestaurar).HasPrecision(18, 3);
+            e.HasIndex(h => new { h.PrefijoOrigen, h.NumeroReferencia, h.Codigo });
         });
 
         modelBuilder.Entity<RemisionRenglon>(e =>
