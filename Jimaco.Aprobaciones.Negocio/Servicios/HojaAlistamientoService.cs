@@ -160,6 +160,9 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
             .Where(d => d.PrefijoOrigen == hoja.PrefijoOrigen && d.NumeroReferencia == hoja.NumeroReferencia)
             .ToListAsync(ct);
 
+        var nombreUsuario = await db.Usuarios.Where(u => u.Id == usuarioId).Select(u => u.Nombre).FirstOrDefaultAsync(ct);
+        var ahora = timeProvider.GetUtcNow().UtcDateTime;
+
         var renglonesPorId = hoja.Renglones.ToDictionary(r => r.Id);
         foreach (var cambio in dto.Renglones)
         {
@@ -184,6 +187,22 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
                     : doc.Renglones.Where(r => r.Orden == renglon.Orden).ToList();
 
             var posicion = ObtenerCandidatos(hoja).FindIndex(r => r.Id == renglon.Id);
+
+            // Bitácora (2026-11-09): una sola entrada por cambio, aunque se replique a varias copias.
+            if (renglon.CantidadDisponible != cambio.CantidadDisponible)
+                db.HistorialDisponible.Add(new HistorialDisponible
+                {
+                    PrefijoOrigen = hoja.PrefijoOrigen,
+                    NumeroReferencia = hoja.NumeroReferencia,
+                    Codigo = renglon.Codigo,
+                    Descripcion = renglon.Descripcion,
+                    CantidadAnterior = renglon.CantidadDisponible,
+                    CantidadNueva = cambio.CantidadDisponible,
+                    Origen = HistorialDisponible.OrigenUsuario,
+                    UsuarioId = usuarioId,
+                    NombreUsuario = nombreUsuario,
+                    Fecha = ahora
+                });
 
             foreach (var copia in grupo)
             {
@@ -387,7 +406,22 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
 
         if (grupo.Count == 0) return; // ya no queda ninguna copia activa de esta hoja — nada que refrescar
 
-        foreach (var copia in grupo)
+        // Progreso "en depósito" de ítems que en lecturas anteriores desaparecieron de la Cotización
+        // (ver HistorialDisponible.OrigenRetiradoEnWO) — se devuelve si el Código reaparece.
+        var depositos = await db.HistorialDisponible
+            .Where(h => h.PrefijoOrigen == dto.PrefijoOrigen && h.NumeroReferencia == dto.NumeroReferencia
+                        && h.Origen == HistorialDisponible.OrigenRetiradoEnWO && h.CantidadPorRestaurar > 0)
+            .OrderBy(h => h.Id)
+            .ToListAsync(ct);
+        var depositoPorCodigo = depositos
+            .Where(h => h.Codigo != null)
+            .GroupBy(h => h.Codigo!)
+            .ToDictionary(g => g.Key, g => g.ToList());
+        var codigosRestaurados = new HashSet<string>();
+
+        var ahora = timeProvider.GetUtcNow().UtcDateTime;
+        var primera = true;
+        foreach (var copia in grupo.OrderBy(c => c.Id))
         {
             copia.Fecha = dto.Fecha;
             copia.FechaVencimiento = dto.FechaVencimiento;
@@ -400,8 +434,16 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
             copia.FormaDePago = dto.FormaDePago;
             copia.CampoEntrega = dto.CampoEntrega;
 
-            ReemplazarRenglonesConservandoProgreso(copia, dto.Renglones);
+            // La bitácora y el depósito se escriben una sola vez por grupo (las copias son réplicas).
+            ReemplazarRenglonesConservandoProgreso(copia, dto.Renglones, depositoPorCodigo, codigosRestaurados, primera ? ahora : null);
+            primera = false;
         }
+
+        // Los depósitos devueltos se consumen después de aplicar TODAS las copias (cada una necesita
+        // el mismo valor para quedar igual a sus hermanas).
+        foreach (var codigo in codigosRestaurados)
+            foreach (var deposito in depositoPorCodigo[codigo])
+                deposito.CantidadPorRestaurar = 0;
 
         await db.SaveChangesAsync(ct);
         await AvisarSiQuedoCompletaYRemisionadaAsync(grupo, ct);
@@ -421,8 +463,34 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
     // IMPORTANTE (2026-10-14, bug real: Hoja 16197): un renglón que se reutiliza se ACTUALIZA en el
     // lugar (mismo Id), nunca se borra+recrea — si Transporte tiene la página abierta con los Ids
     // viejos cargados, su siguiente "Guardar" no debe fallar porque esa fila ya no existe.
-    private void ReemplazarRenglonesConservandoProgreso(DocumentoVinculado copia, IReadOnlyList<RenglonDocumentoVinculadoInputDto> nuevos)
+    //
+    // Bitácora + depósito (2026-11-09, Hoja 16100): `registrarEn` != null solo para la primera copia
+    // del grupo. Un ítem que desaparece de la Cotización deja su progreso en depósito; si reaparece
+    // con el mismo Código (lo quitaron y lo volvieron a poner en WO), se le devuelve.
+    private void ReemplazarRenglonesConservandoProgreso(
+        DocumentoVinculado copia,
+        IReadOnlyList<RenglonDocumentoVinculadoInputDto> nuevos,
+        IReadOnlyDictionary<string, List<HistorialDisponible>> depositoPorCodigo,
+        HashSet<string> codigosRestaurados,
+        DateTime? registrarEn)
     {
+        void Registrar(string? codigo, string? descripcion, decimal anterior, decimal nueva, string origen, decimal? porRestaurar = null)
+        {
+            if (registrarEn is not { } fecha) return;
+            db.HistorialDisponible.Add(new HistorialDisponible
+            {
+                PrefijoOrigen = copia.PrefijoOrigen,
+                NumeroReferencia = copia.NumeroReferencia,
+                Codigo = codigo,
+                Descripcion = descripcion,
+                CantidadAnterior = anterior,
+                CantidadNueva = nueva,
+                Origen = origen,
+                CantidadPorRestaurar = porRestaurar,
+                Fecha = fecha
+            });
+        }
+
         var viejosPorCodigo = new Dictionary<string, List<RenglonDocumentoVinculado>>();
         var viejosSinCodigo = new List<RenglonDocumentoVinculado>();
         foreach (var viejo in copia.Renglones.OrderBy(r => r.Orden))
@@ -463,6 +531,14 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
             viejosPorCodigo.TryGetValue(codigo, out var listaVieja);
             listaVieja ??= [];
             var progresoDisponible = listaVieja.Sum(v => v.CantidadDisponible);
+            var desdeDeposito = false;
+            if (listaVieja.Count == 0 && depositoPorCodigo.TryGetValue(codigo, out var deposito))
+            {
+                progresoDisponible = deposito.Sum(d => d.CantidadPorRestaurar ?? 0);
+                desdeDeposito = progresoDisponible > 0;
+                if (desdeDeposito) codigosRestaurados.Add(codigo);
+            }
+            var anteriorPorRenglon = listaVieja.Select(v => v.CantidadDisponible).ToList();
 
             for (var i = 0; i < listaNueva.Count; i++)
             {
@@ -481,9 +557,24 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
 
                 ActualizarCampos(renglon, nuevo);
                 var aplicar = Math.Min(progresoDisponible, nuevo.Cantidad);
+                var anterior = i < anteriorPorRenglon.Count ? anteriorPorRenglon[i] : 0m;
                 renglon.CantidadDisponible = aplicar;
                 progresoDisponible -= aplicar;
+
+                if (desdeDeposito && aplicar > 0)
+                    Registrar(nuevo.Codigo, nuevo.Descripcion, 0, aplicar, HistorialDisponible.OrigenRestauradoDesdeWO);
+                else if (anterior != aplicar)
+                    Registrar(nuevo.Codigo, nuevo.Descripcion, anterior, aplicar, HistorialDisponible.OrigenRefrescoWO);
             }
+        }
+
+        // Códigos que ya no vienen en la lectura de WO: su progreso queda en depósito.
+        foreach (var (codigo, listaVieja) in viejosPorCodigo)
+        {
+            if (nuevosPorCodigo.ContainsKey(codigo)) continue;
+            var progreso = listaVieja.Sum(v => v.CantidadDisponible);
+            if (progreso > 0)
+                Registrar(codigo, listaVieja[0].Descripcion, progreso, 0, HistorialDisponible.OrigenRetiradoEnWO, progreso);
         }
 
         // Renglones sin código: sigue el emparejamiento por posición de siempre (no hay otra señal).
