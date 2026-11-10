@@ -41,9 +41,13 @@ public class PagosController(IPagosService pagosService) : ControllerBase
         return NoContent();
     }
 
+    [HttpGet("rechazados")]
+    public async Task<ActionResult<PaginaDto<SeguimientoPagoDto>>> Rechazados([FromQuery] FiltroPagosDto filtro, CancellationToken ct) =>
+        Ok(await pagosService.ListarRechazadosAsync(filtro, UsuarioActualId, ct));
+
     [HttpGet("lotes")]
-    public async Task<ActionResult<IReadOnlyList<LotePagoDto>>> Lotes(CancellationToken ct) =>
-        Ok(await pagosService.ListarLotesAsync(UsuarioActualId, ct));
+    public async Task<ActionResult<PaginaDto<LotePagoDto>>> Lotes([FromQuery] FiltroPagosDto filtro, CancellationToken ct) =>
+        Ok(await pagosService.ListarLotesAsync(filtro, UsuarioActualId, ct));
 
     [HttpGet("lotes/{id:int}/soporte")]
     public async Task<IActionResult> Soporte(int id, CancellationToken ct)

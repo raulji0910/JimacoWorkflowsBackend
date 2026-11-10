@@ -779,6 +779,60 @@ public class CuentasPorPagarService(AppDbContext db, IInstanciaDocumentoService 
 
     private static string Html(string? texto) => System.Net.WebUtility.HtmlEncode(texto ?? "");
 
+    public async Task<SeguimientoPaginaDto> ObtenerSeguimientoAsync(FiltroPagosDto filtro, int usuarioId, CancellationToken ct = default)
+    {
+        await ExigirPermisoAsync(usuarioId, ct);
+
+        var tamano = ConsultaSeguimientoPagos.TamanoPagina(filtro.TamanoPagina, 10);
+        var pagina = Math.Max(1, filtro.Pagina);
+        var (desde, hasta) = ConsultaSeguimientoPagos.RangoUtc(filtro.Desde, filtro.Hasta);
+
+        // Fecha = cuándo se mandó a pagar.
+        var baseQ = ConsultaSeguimientoPagos.Buscar(ConsultaSeguimientoPagos.Ordenes(db), filtro.Buscar);
+        if (desde is { } d) baseQ = baseQ.Where(i => i.FechaCreacion >= d);
+        if (hasta is { } h) baseQ = baseQ.Where(i => i.FechaCreacion < h);
+
+        var porPagar = await ConsultaSeguimientoPagos.ContarAsync(ConsultaSeguimientoPagos.PorEstado(baseQ, ConsultaSeguimientoPagos.PorPagar), ct);
+        var pagados = await ConsultaSeguimientoPagos.ContarAsync(ConsultaSeguimientoPagos.PorEstado(baseQ, ConsultaSeguimientoPagos.Pagado), ct);
+        var rechazados = await ConsultaSeguimientoPagos.ContarAsync(ConsultaSeguimientoPagos.PorEstado(baseQ, ConsultaSeguimientoPagos.Rechazado), ct);
+        var todos = await ConsultaSeguimientoPagos.ContarAsync(baseQ, ct);
+
+        // Grupo = la relación; una orden sin relación (extraordinario o de antes) es su propio grupo (-Id).
+        var filtrado = ConsultaSeguimientoPagos.PorEstado(baseQ, filtro.Estado);
+        var total = await filtrado.Select(i => i.PagoProveedor!.RelacionPagoId ?? -i.Id).Distinct().CountAsync(ct);
+        var claves = await filtrado
+            .GroupBy(i => i.PagoProveedor!.RelacionPagoId ?? -i.Id)
+            .Select(g => new { Clave = g.Key, Ultimo = g.Max(x => x.Id) })
+            .OrderByDescending(g => g.Ultimo)
+            .Skip((pagina - 1) * tamano)
+            .Take(tamano)
+            .Select(g => g.Clave)
+            .ToListAsync(ct);
+
+        var ordenes = claves.Count == 0 ? []
+            : await ConsultaSeguimientoPagos.ArmarAsync(db, filtrado.Where(i => claves.Contains(i.PagoProveedor!.RelacionPagoId ?? -i.Id)), ct);
+
+        var grupos = ordenes
+            .GroupBy(o => o.NumeroRelacion is int n ? $"rel-{n}" : $"ord-{o.InstanciaDocumentoId}")
+            .Select(g =>
+            {
+                var lista = g.OrderBy(o => o.Tercero).ToList();
+                var primera = lista[0];
+                return new GrupoSeguimientoDto(g.Key, primera.NumeroRelacion, primera.EsExtraordinario && primera.NumeroRelacion is null,
+                    primera.CreadoPor, lista.Min(o => o.FechaCreacion), lista);
+            })
+            .OrderByDescending(g => g.Ordenes.Max(o => o.InstanciaDocumentoId))
+            .ToList();
+
+        return new SeguimientoPaginaDto(grupos, total, pagina, tamano, porPagar, pagados, rechazados, todos);
+    }
+
+    public async Task<IReadOnlyList<LineaOrdenPagoDto>> ObtenerLineasSeguimientoAsync(int instanciaDocumentoId, int usuarioId, CancellationToken ct = default)
+    {
+        await ExigirPermisoAsync(usuarioId, ct);
+        return await ConsultaSeguimientoPagos.LineasAsync(db, instanciaDocumentoId, ct);
+    }
+
     private sealed record EstadoPartida(EstadoPartidaCuentaPorPagar Estado, int? InstanciaId, string? NumeroReferencia);
 
     /// <summary>

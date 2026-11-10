@@ -30,6 +30,12 @@ public interface ICuentasPorPagarService
     Task<IReadOnlyList<TerceroWODto>> BuscarTercerosAsync(string texto, int usuarioId, CancellationToken ct = default);
     Task<int> CrearPagoExtraordinarioAsync(CrearPagoExtraordinarioDto dto, int usuarioId, CancellationToken ct = default);
 
+    /// <summary>Órdenes de pago con su estado (por pagar, pagado con CE, rechazado con motivo), paginadas por relación.</summary>
+    Task<SeguimientoPaginaDto> ObtenerSeguimientoAsync(FiltroPagosDto filtro, int usuarioId, CancellationToken ct = default);
+
+    /// <summary>Facturas / anticipos / giro de UNA orden del seguimiento (se pide al abrirla).</summary>
+    Task<IReadOnlyList<LineaOrdenPagoDto>> ObtenerLineasSeguimientoAsync(int instanciaDocumentoId, int usuarioId, CancellationToken ct = default);
+
     // Catálogo de terceros (Sincronizador).
     Task<DateTime?> ObtenerFechaCorteTercerosAsync(CancellationToken ct = default);
     Task GuardarTercerosAsync(IReadOnlyList<TerceroWOInputDto> terceros, CancellationToken ct = default);

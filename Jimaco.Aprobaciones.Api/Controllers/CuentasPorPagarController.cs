@@ -39,6 +39,14 @@ public class CuentasPorPagarController(ICuentasPorPagarService cuentasPorPagarSe
     public async Task<ActionResult<RelacionCreadaDto>> Ratificar(RatificarRelacionDto dto) =>
         Ok(await cuentasPorPagarService.RatificarRelacionAsync(dto, UsuarioActualId, CancellationToken.None));
 
+    [HttpGet("seguimiento")]
+    public async Task<ActionResult<SeguimientoPaginaDto>> Seguimiento([FromQuery] FiltroPagosDto filtro, CancellationToken ct) =>
+        Ok(await cuentasPorPagarService.ObtenerSeguimientoAsync(filtro, UsuarioActualId, ct));
+
+    [HttpGet("seguimiento/{id:int}/lineas")]
+    public async Task<ActionResult<IReadOnlyList<LineaOrdenPagoDto>>> LineasSeguimiento(int id, CancellationToken ct) =>
+        Ok(await cuentasPorPagarService.ObtenerLineasSeguimientoAsync(id, UsuarioActualId, ct));
+
     // ---- Pago extraordinario ----
 
     [HttpGet("tipos-giro")]

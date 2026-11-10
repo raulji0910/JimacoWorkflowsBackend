@@ -12,7 +12,10 @@ public interface IPagosService
 
     Task RechazarAsync(int instanciaDocumentoId, string comentario, int usuarioId, CancellationToken ct = default);
 
-    Task<IReadOnlyList<LotePagoDto>> ListarLotesAsync(int usuarioId, CancellationToken ct = default);
+    /// <summary>Lo que el pagador rechazó en los últimos 120 días, con el motivo.</summary>
+    Task<PaginaDto<SeguimientoPagoDto>> ListarRechazadosAsync(FiltroPagosDto filtro, int usuarioId, CancellationToken ct = default);
+
+    Task<PaginaDto<LotePagoDto>> ListarLotesAsync(FiltroPagosDto filtro, int usuarioId, CancellationToken ct = default);
 
     Task<(Stream Contenido, string NombreArchivo)> DescargarSoporteLoteAsync(int lotePagoId, int usuarioId, CancellationToken ct = default);
 }

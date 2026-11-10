@@ -32,7 +32,7 @@ public class RelacionYLotePagosTests
 
     private InstanciaDocumentoService Instancias() => new(db, almacenamiento.Object, notificaciones.Object, reloj);
     private CuentasPorPagarService CuentasPorPagar() => new(db, Instancias(), notificaciones.Object, reloj);
-    private PagosService Pagos() => new(db, Instancias(), almacenamiento.Object, reloj);
+    private PagosService Pagos() => new(db, Instancias(), almacenamiento.Object, notificaciones.Object, reloj);
 
     private int comercialId;
     private int pagadorId;
@@ -227,6 +227,74 @@ public class RelacionYLotePagosTests
         var detalle = await CuentasPorPagar().ObtenerProveedorAsync("800", comercialId);
         Assert.Equal(EstadoPartidaCuentaPorPagar.Disponible, detalle.Partidas.Single().Estado);
         Assert.Single(await Pagos().ListarPendientesAsync(pagadorId));
+    }
+
+    [Fact]
+    public async Task Rechazar_AvisaAGerenciaComercialConElMotivo_YSeVeEnElSeguimiento()
+    {
+        await SembrarAsync();
+        await RatificarDosProveedoresAsync();
+        var orden = (await Pagos().ListarPendientesAsync(pagadorId)).Single(o => o.Identificacion == "800");
+        notificaciones.Invocations.Clear();
+
+        await Pagos().RechazarAsync(orden.InstanciaDocumentoId, "Este mes no hay caja", pagadorId);
+
+        // Un solo aviso, el detallado, a quien creó la relación (no el genérico "Tu documento fue rechazado")
+        notificaciones.Verify(n => n.NotificarHtmlAsync(orden.InstanciaDocumentoId, comercialId,
+            It.Is<string>(s => s.Contains("Pago rechazado")), It.Is<string>(c => c.Contains("Este mes no hay caja") && c.Contains("800")),
+            "/cuentas-por-pagar/seguimiento", It.IsAny<CancellationToken>()), Times.Once);
+        notificaciones.Verify(n => n.NotificarUsuarioAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        var pagina = await CuentasPorPagar().ObtenerSeguimientoAsync(new FiltroPagosDto(), comercialId);
+        Assert.Equal(1, pagina.PorPagar.Cantidad);
+        Assert.Equal(1, pagina.Rechazados.Cantidad);
+        Assert.Equal(orden.Neto, pagina.Rechazados.Monto);
+        var seguimiento = Assert.Single(pagina.Grupos).Ordenes; // la relación viene completa, en un solo grupo
+        var rechazada = seguimiento.Single(s => s.InstanciaDocumentoId == orden.InstanciaDocumentoId);
+        Assert.Equal("Rechazado", rechazada.Estado);
+        Assert.Equal("Este mes no hay caja", rechazada.MotivoRechazo);
+        Assert.Equal("Gerente General", rechazada.RechazadoPor);
+        Assert.Equal("PorPagar", seguimiento.Single(s => s.InstanciaDocumentoId != orden.InstanciaDocumentoId).Estado);
+
+        // Filtro por estado: el grupo trae solo las órdenes de ese estado
+        var soloRechazadas = await CuentasPorPagar().ObtenerSeguimientoAsync(new FiltroPagosDto(Estado: "Rechazado"), comercialId);
+        Assert.Equal(orden.InstanciaDocumentoId, Assert.Single(Assert.Single(soloRechazadas.Grupos).Ordenes).InstanciaDocumentoId);
+
+        // El pagador ve lo que él rechazó en su propio menú
+        var rechazadas = await Pagos().ListarRechazadosAsync(new FiltroPagosDto(), pagadorId);
+        Assert.Equal(1, rechazadas.Total);
+        Assert.Equal("Este mes no hay caja", Assert.Single(rechazadas.Items).MotivoRechazo);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => Pagos().ListarRechazadosAsync(new FiltroPagosDto(), comercialId));
+    }
+
+    [Fact]
+    public async Task Seguimiento_MuestraElLotePagado_YExigeElPermisoDeCuentasPorPagar()
+    {
+        await SembrarAsync();
+        await RatificarDosProveedoresAsync();
+        var ordenes = await Pagos().ListarPendientesAsync(pagadorId);
+        await Pagos().PagarLoteAsync(ordenes.Select(o => o.InstanciaDocumentoId).ToList(), 13650, Hoy,
+            "soporte.pdf", "application/pdf", 10, new MemoryStream([1]), pagadorId);
+
+        var pagina = await CuentasPorPagar().ObtenerSeguimientoAsync(new FiltroPagosDto(Estado: "Pagado"), comercialId);
+        var seguimiento = pagina.Grupos.SelectMany(g => g.Ordenes).ToList();
+        Assert.Equal(2, seguimiento.Count);
+        Assert.All(seguimiento, s => Assert.Equal("Pagado", s.Estado));
+        Assert.All(seguimiento, s => Assert.Equal(1, s.NumeroLote));
+        Assert.All(seguimiento, s => Assert.Empty(s.Lineas)); // las líneas se piden al abrir
+        Assert.NotEmpty(await CuentasPorPagar().ObtenerLineasSeguimientoAsync(seguimiento[0].InstanciaDocumentoId, comercialId));
+
+        // Búsqueda por NIT, página fuera de rango y lotes paginados
+        var porNit = await CuentasPorPagar().ObtenerSeguimientoAsync(new FiltroPagosDto(Buscar: "800"), comercialId);
+        Assert.Equal("800", Assert.Single(Assert.Single(porNit.Grupos).Ordenes).Identificacion);
+        var vacia = await CuentasPorPagar().ObtenerSeguimientoAsync(new FiltroPagosDto(Pagina: 2), comercialId);
+        Assert.Empty(vacia.Grupos);
+        Assert.Equal(1, vacia.Total);
+        var lotes = await Pagos().ListarLotesAsync(new FiltroPagosDto(), pagadorId);
+        Assert.Equal(1, lotes.Total);
+        Assert.Empty((await Pagos().ListarLotesAsync(new FiltroPagosDto(Desde: Hoy.AddDays(1)), pagadorId)).Items);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => CuentasPorPagar().ObtenerSeguimientoAsync(new FiltroPagosDto(), pagadorId));
     }
 
     [Fact]

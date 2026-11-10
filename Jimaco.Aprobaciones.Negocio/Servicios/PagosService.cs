@@ -15,7 +15,7 @@ namespace Jimaco.Aprobaciones.Negocio.Servicios;
 /// InstanciaDocumentoService.ConfirmarPagoProveedorAsync) y el aviso sale uno solo por lote.
 /// </summary>
 public class PagosService(AppDbContext db, IInstanciaDocumentoService instanciaService, IAlmacenamientoArchivos almacenamiento,
-    TimeProvider timeProvider) : IPagosService
+    INotificacionService notificacionService, TimeProvider timeProvider) : IPagosService
 {
     public async Task<IReadOnlyList<OrdenPagoPendienteDto>> ListarPendientesAsync(int usuarioId, CancellationToken ct = default)
     {
@@ -31,15 +31,7 @@ public class PagosService(AppDbContext db, IInstanciaDocumentoService instanciaS
         return ordenes.Select(i =>
         {
             var p = i.PagoProveedor!;
-            var lineas = p.EsExtraordinario
-                ? [new LineaOrdenPagoDto(p.NombreTipoGiro ?? "Pago extraordinario", p.Concepto, i.Valor ?? 0)]
-                : i.FacturasPagoProveedor.OrderBy(f => f.Vencimiento ?? f.Fecha)
-                    .Select(f => new LineaOrdenPagoDto($"{f.Prefijo} {f.NumeroDocumento}".Trim(),
-                        string.Join(" · ", new[] { f.NumeroDocumentoExterno is { Length: > 0 } ext ? $"Factura {ext}" : null, f.Vencimiento is { } v ? $"vence {v:dd/MM/yyyy}" : null }.Where(x => x is not null)),
-                        f.Valor))
-                    .Concat(i.AnticiposPagoProveedor.OrderBy(a => a.Fecha)
-                        .Select(a => new LineaOrdenPagoDto($"Anticipo {a.Prefijo} {a.NumeroDocumento}".Trim(), a.Nota, -a.Valor)))
-                    .ToList();
+            var lineas = LineasDe(i);
 
             return new OrdenPagoPendienteDto(
                 i.Id, i.NumeroReferencia, p.EsExtraordinario, p.Identificacion,
@@ -177,16 +169,104 @@ public class PagosService(AppDbContext db, IInstanciaDocumentoService instanciaS
         if (instancia.PagoProveedor.LotePagoId is not null)
             throw new InvalidOperationException("Esa orden ya se pagó en un lote.");
 
-        // Rechazado libera las facturas y anticipos (vuelven a "Disponible" para Gerencia Comercial)
-        // y le avisa a quien la creó con el motivo — el flujo normal ya hace las dos cosas.
+        // Rechazado libera las facturas y anticipos (vuelven a "Disponible" para Gerencia Comercial).
         await instanciaService.EjecutarAccionAsync(instanciaDocumentoId, usuarioId,
             new EjecutarAccionDto(TipoAccion.Rechazado, comentario.Trim()), ct, omitirControlRol: true);
+
+        // Aviso a quien la mandó pagar (pedido 2026-11-10): tercero, NIT, valor, facturas y el motivo,
+        // con el link a "Seguimiento de pagos". El rechazo ya quedó guardado: si el correo falla no se deshace.
+        try
+        {
+            var orden = await ConsultarOrdenes().FirstAsync(i => i.Id == instanciaDocumentoId, ct);
+            var p = orden.PagoProveedor!;
+            var pagador = (await NombresUsuariosAsync([usuarioId], ct)).GetValueOrDefault(usuarioId) ?? "El pagador";
+            var tercero = p.NombreTercero ?? orden.Proveedor ?? p.Identificacion;
+            var origen = p.EsExtraordinario ? "el pago extraordinario" : $"la orden de pago de la relación {p.RelacionPago?.Numero}";
+            var filas = string.Concat(LineasDe(orden).Select(l =>
+                $"<tr><td>{Html(l.Etiqueta)}</td><td>{Html(l.Detalle)}</td><td style=\"text-align:right\">{l.Valor:N0}</td></tr>"));
+            var cuerpo =
+                $"<p>{Html(pagador)} <b>rechazó</b> {Html(origen)}" +
+                $"a <b>{Html(tercero)}</b> (NIT {Html(p.Identificacion)}) por <b>${(orden.Valor ?? 0):N0}</b>.</p>" +
+                $"<p><b>Motivo:</b> {Html(comentario.Trim())}</p>" +
+                "<table border=\"1\" cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse:collapse\">" +
+                $"<tr><th>Documento</th><th>Detalle</th><th>Valor</th></tr>{filas}</table>" +
+                (p.EsExtraordinario ? "" : "<p>Las facturas quedaron otra vez disponibles en Cuentas por pagar, por si las querés incluir en otra relación.</p>");
+            await notificacionService.NotificarHtmlAsync(orden.Id, orden.CreadoPorUsuarioId,
+                $"[Jimaco Aprobaciones] Pago rechazado: {tercero} por ${(orden.Valor ?? 0):N0}", cuerpo, "/cuentas-por-pagar/seguimiento", ct);
+        }
+        catch (Exception) when (!ct.IsCancellationRequested)
+        {
+            // El rechazo ya quedó; el aviso no lo tumba (queda visible en "Seguimiento de pagos").
+        }
     }
 
-    public async Task<IReadOnlyList<LotePagoDto>> ListarLotesAsync(int usuarioId, CancellationToken ct = default)
+    /// <summary>Las líneas que se le muestran a quien paga / a quien hace seguimiento: facturas (y anticipos en negativo) o el giro.</summary>
+    internal static List<LineaOrdenPagoDto> LineasDe(InstanciaDocumento i)
+    {
+        var p = i.PagoProveedor!;
+        return p.EsExtraordinario
+            ? [new LineaOrdenPagoDto(p.NombreTipoGiro ?? "Pago extraordinario", p.Concepto, i.Valor ?? 0)]
+            : i.FacturasPagoProveedor.OrderBy(f => f.Vencimiento ?? f.Fecha)
+                .Select(f => new LineaOrdenPagoDto($"{f.Prefijo} {f.NumeroDocumento}".Trim(),
+                    string.Join(" · ", new[] { f.NumeroDocumentoExterno is { Length: > 0 } ext ? $"Factura {ext}" : null, f.Vencimiento is { } v ? $"vence {v:dd/MM/yyyy}" : null }.Where(x => x is not null)),
+                    f.Valor))
+                .Concat(i.AnticiposPagoProveedor.OrderBy(a => a.Fecha)
+                    .Select(a => new LineaOrdenPagoDto($"Anticipo {a.Prefijo} {a.NumeroDocumento}".Trim(), a.Nota, -a.Valor)))
+                .ToList();
+    }
+
+    private static string Html(string? texto) => System.Net.WebUtility.HtmlEncode(texto ?? "");
+
+    public async Task<PaginaDto<SeguimientoPagoDto>> ListarRechazadosAsync(FiltroPagosDto filtro, int usuarioId, CancellationToken ct = default)
     {
         await ExigirPermisoAsync(usuarioId, ct);
-        return await ListarLotesInternoAsync(_ => true, 30, ct);
+
+        var tamano = ConsultaSeguimientoPagos.TamanoPagina(filtro.TamanoPagina, 15);
+        var pagina = Math.Max(1, filtro.Pagina);
+        var (desde, hasta) = ConsultaSeguimientoPagos.RangoUtc(filtro.Desde, filtro.Hasta);
+
+        // Fecha = cuándo se rechazó.
+        var q = ConsultaSeguimientoPagos.PorEstado(
+            ConsultaSeguimientoPagos.Buscar(ConsultaSeguimientoPagos.Ordenes(db), filtro.Buscar), ConsultaSeguimientoPagos.Rechazado);
+        var conFecha = q.Select(i => new
+        {
+            Orden = i,
+            FechaRechazo = db.HistorialAcciones.Where(h => h.InstanciaDocumentoId == i.Id && h.Accion == TipoAccion.Rechazado).Max(h => (DateTime?)h.Fecha)
+        });
+        if (desde is { } d) conFecha = conFecha.Where(x => x.FechaRechazo >= d);
+        if (hasta is { } h) conFecha = conFecha.Where(x => x.FechaRechazo < h);
+
+        var total = await conFecha.CountAsync(ct);
+        var ids = await conFecha.OrderByDescending(x => x.FechaRechazo).ThenByDescending(x => x.Orden.Id)
+            .Skip((pagina - 1) * tamano).Take(tamano).Select(x => x.Orden.Id).ToListAsync(ct);
+
+        var items = ids.Count == 0 ? []
+            : (await ConsultaSeguimientoPagos.ArmarAsync(db, ConsultaSeguimientoPagos.Ordenes(db).Where(i => ids.Contains(i.Id)), ct))
+                .OrderBy(o => ids.IndexOf(o.InstanciaDocumentoId)).ToList();
+        return new PaginaDto<SeguimientoPagoDto>(items, total, pagina, tamano);
+    }
+
+    public async Task<PaginaDto<LotePagoDto>> ListarLotesAsync(FiltroPagosDto filtro, int usuarioId, CancellationToken ct = default)
+    {
+        await ExigirPermisoAsync(usuarioId, ct);
+
+        var tamano = ConsultaSeguimientoPagos.TamanoPagina(filtro.TamanoPagina, 10);
+        var pagina = Math.Max(1, filtro.Pagina);
+
+        // Fecha = fecha del pago (es un día, sin hora).
+        var q = db.LotesPago.AsNoTracking();
+        if (filtro.Desde is { } d) q = q.Where(l => l.FechaPago >= d.Date);
+        if (filtro.Hasta is { } h) q = q.Where(l => l.FechaPago < h.Date.AddDays(1));
+        if (!string.IsNullOrWhiteSpace(filtro.Buscar))
+        {
+            var t = filtro.Buscar.Trim();
+            q = q.Where(l => l.Pagos.Any(p => p.Identificacion.Contains(t) || (p.NombreTercero != null && p.NombreTercero.Contains(t))));
+        }
+
+        var total = await q.CountAsync(ct);
+        var ids = await q.OrderByDescending(l => l.Numero).Skip((pagina - 1) * tamano).Take(tamano).Select(l => l.Id).ToListAsync(ct);
+        var items = ids.Count == 0 ? [] : await ListarLotesInternoAsync(l => ids.Contains(l.Id), tamano, ct);
+        return new PaginaDto<LotePagoDto>(items, total, pagina, tamano);
     }
 
     public async Task<(Stream Contenido, string NombreArchivo)> DescargarSoporteLoteAsync(int lotePagoId, int usuarioId, CancellationToken ct = default)
@@ -220,7 +300,9 @@ public class PagosService(AppDbContext db, IInstanciaDocumentoService instanciaS
             .ToList();
     }
 
-    private IQueryable<InstanciaDocumento> ConsultarOrdenes() =>
+    internal IQueryable<InstanciaDocumento> ConsultarOrdenes() => ConsultarOrdenes(db);
+
+    internal static IQueryable<InstanciaDocumento> ConsultarOrdenes(AppDbContext db) =>
         db.InstanciasDocumento.AsNoTracking()
             .Include(i => i.PagoProveedor).ThenInclude(p => p!.RelacionPago)
             .Include(i => i.FacturasPagoProveedor)

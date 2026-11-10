@@ -614,6 +614,11 @@ public class InstanciaDocumentoService(
                     $"Tu documento {desc} fue devuelto. Motivo: {dto.Comentario}. Corregilo y reenvialo desde \"Mis documentos\".", ct));
                 break;
 
+            // Orden de pago rechazada desde el menú "Pagos": el aviso detallado (tercero, facturas,
+            // motivo) se lo manda PagosService.RechazarAsync a Gerencia Comercial.
+            case TipoAccion.Rechazado when instancia.PagoProveedor is not null:
+                break;
+
             case TipoAccion.Rechazado:
                 await NotificarSinRomperAsync(() => notificacionService.NotificarUsuarioAsync(
                     instancia.Id, emisorId, $"[Jimaco Aprobaciones] Tu documento {desc} fue rechazado",

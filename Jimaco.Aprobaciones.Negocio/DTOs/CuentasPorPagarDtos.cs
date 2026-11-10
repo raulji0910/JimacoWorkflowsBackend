@@ -228,6 +228,49 @@ public record CrearPagoExtraordinarioDto(int IdTerceroWO, decimal Valor, int Tip
 
 public record LineaOrdenPagoDto(string Etiqueta, string? Detalle, decimal Valor);
 
+/// <summary>Filtros de las listas paginadas de pagos (querystring). Fechas = días de Colombia.
+/// Estado: PorPagar | Pagado | Rechazado | null (todos).</summary>
+public record FiltroPagosDto(string? Estado = null, DateTime? Desde = null, DateTime? Hasta = null, string? Buscar = null,
+    int Pagina = 1, int? TamanoPagina = null);
+
+public record PaginaDto<T>(IReadOnlyList<T> Items, int Total, int Pagina, int TamanoPagina);
+
+public record ConteoEstadoDto(int Cantidad, decimal Monto);
+
+/// <summary>Una relación de pagos (o una orden suelta / pago extraordinario) dentro de una página del seguimiento.</summary>
+public record GrupoSeguimientoDto(string Clave, int? NumeroRelacion, bool EsExtraordinario, string? CreadoPor, DateTime Fecha,
+    IReadOnlyList<SeguimientoPagoDto> Ordenes);
+
+/// <summary>La página pide GRUPOS (relaciones completas), nunca parte una relación en dos páginas.
+/// Los conteos son de todo lo que cumple fechas + búsqueda, sin importar la página ni el estado elegido.</summary>
+public record SeguimientoPaginaDto(IReadOnlyList<GrupoSeguimientoDto> Grupos, int Total, int Pagina, int TamanoPagina,
+    ConteoEstadoDto PorPagar, ConteoEstadoDto Pagados, ConteoEstadoDto Rechazados, ConteoEstadoDto Todos);
+
+/// <summary>"Seguimiento de pagos" de Gerencia Comercial: qué pasó con cada orden que mandó pagar.
+/// Estado: PorPagar | Pagado | Rechazado | Otro.</summary>
+public record SeguimientoPagoDto(
+    int InstanciaDocumentoId,
+    string? NumeroReferencia,
+    int? NumeroRelacion,
+    bool EsExtraordinario,
+    string Identificacion,
+    string Tercero,
+    decimal Neto,
+    DateTime FechaCreacion,
+    string? CreadoPor,
+    string Estado,
+    int? NumeroLote,
+    DateTime? FechaPago,
+    string? Banco,
+    string? PrefijoCE,
+    decimal? NumeroCE,
+    bool PendienteCreacionCE,
+    string? ConflictoCreacionCE,
+    string? MotivoRechazo,
+    string? RechazadoPor,
+    DateTime? FechaRechazo,
+    IReadOnlyList<LineaOrdenPagoDto> Lineas);
+
 public record OrdenPagoPendienteDto(
     int InstanciaDocumentoId,
     string? NumeroReferencia,
