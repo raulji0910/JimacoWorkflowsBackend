@@ -114,4 +114,6 @@ public record HojaAlistamientoResumenDto(
     // Informativo para Logística — mismo cálculo que el PDF real (ver nota en HojaAlistamientoDetalleDto).
     decimal Total,
     bool Remisionado,
-    bool RemisionadoParcial);
+    bool RemisionadoParcial,
+    // Cuándo pasó a completa (UTC) — para subir las recién completadas en el dashboard (2026-11-11).
+    DateTime? FechaCompletada = null);

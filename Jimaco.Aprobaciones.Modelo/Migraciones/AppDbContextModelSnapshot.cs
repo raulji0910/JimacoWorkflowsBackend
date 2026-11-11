@@ -408,6 +408,9 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Property<DateTime>("Fecha")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("FechaCompletada")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime>("FechaCreacion")
                         .HasColumnType("datetime2");
 

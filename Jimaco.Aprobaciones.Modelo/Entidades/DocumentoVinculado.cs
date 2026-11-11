@@ -92,6 +92,15 @@ public class DocumentoVinculado
     /// </summary>
     public bool AvisoCompletaRemisionadaEnviado { get; set; }
 
+    /// <summary>
+    /// Momento (UTC) en que la hoja PASÓ de incompleta a completa — pedido 2026-11-11: que las recién
+    /// completadas queden arriba en el dashboard para que Logística no las pierda. Null mientras esté
+    /// incompleta (se borra si deja de estarlo, ej. WO le agrega un ítem) y en las hojas que ya estaban
+    /// completas antes de existir este dato sin bitácora que lo diga. Solo se fija en la transición
+    /// (ver HojaAlistamientoService.MarcarFechaCompletada), nunca en un guardado cualquiera.
+    /// </summary>
+    public DateTime? FechaCompletada { get; set; }
+
     public ICollection<RenglonDocumentoVinculado> Renglones { get; set; } = [];
 }
 

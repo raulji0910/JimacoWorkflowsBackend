@@ -262,6 +262,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             e.Property(d => d.FechaCreacion).HasConversion(ConversorFechaUtc);
             e.Property(d => d.UltimaAlertaEnviada).HasConversion(ConversorFechaUtcNullable);
+            e.Property(d => d.FechaCompletada).HasConversion(ConversorFechaUtcNullable);
 
             e.HasOne(d => d.InstanciaDocumento)
                 .WithMany(i => i.DocumentosVinculados)
