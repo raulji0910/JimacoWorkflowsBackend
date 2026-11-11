@@ -644,7 +644,7 @@ public class CuentasPorPagarService(AppDbContext db, IInstanciaDocumentoService 
 
     public async Task<IReadOnlyList<TipoGiroDto>> ObtenerTiposGiroAsync(CancellationToken ct = default) =>
         await db.TiposGiro.AsNoTracking().Where(t => t.Activo).OrderBy(t => t.Orden).ThenBy(t => t.Nombre)
-            .Select(t => new TipoGiroDto(t.Id, t.Nombre, t.EsAnticipo))
+            .Select(t => new TipoGiroDto(t.Id, t.Nombre, t.EsAnticipo, t.CodigoCuenta, t.Grupo))
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<TerceroWODto>> BuscarTercerosAsync(string texto, int usuarioId, CancellationToken ct = default)
@@ -689,7 +689,7 @@ public class CuentasPorPagarService(AppDbContext db, IInstanciaDocumentoService 
             Valor: dto.Valor,
             FechaDocumento: Hoy,
             Datos: new Dictionary<string, string> { ["nit"] = tercero.Identificacion, ["observaciones"] = concepto },
-            Renglones: [new RenglonInputDto(Codigo: tipoGiro.Nombre, Descripcion: concepto, Cantidad: 1, UnidadMedida: null, ValorUnitario: dto.Valor, PorcentajeIva: 0m)]),
+            Renglones: [new RenglonInputDto(Codigo: tipoGiro.CodigoCuenta, Descripcion: concepto, Cantidad: 1, UnidadMedida: null, ValorUnitario: dto.Valor, PorcentajeIva: 0m)]),
             usuarioId, ct, notificar: false);
 
         db.PagosProveedor.Add(new PagoProveedor
@@ -712,7 +712,7 @@ public class CuentasPorPagarService(AppDbContext db, IInstanciaDocumentoService 
                      "<table border=\"1\" cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse:collapse\">" +
                      $"<tr><th style=\"text-align:left\">Tercero</th><td>{Html(tercero.Nombre)} ({Html(tercero.Identificacion)})</td></tr>" +
                      $"<tr><th style=\"text-align:left\">Valor</th><td><b>${dto.Valor:N0}</b></td></tr>" +
-                     $"<tr><th style=\"text-align:left\">Tipo de giro</th><td>{Html(tipoGiro.Nombre)}</td></tr>" +
+                     $"<tr><th style=\"text-align:left\">Tipo de giro</th><td>{Html(tipoGiro.Nombre)}{(tipoGiro.Grupo is null ? "" : $" <small>({Html(tipoGiro.Grupo)})</small>")}</td></tr>" +
                      $"<tr><th style=\"text-align:left\">Concepto</th><td>{Html(concepto)}</td></tr></table>" +
                      "<p>Lo encontrás en el menú <b>Pagos</b>.</p>";
         await AvisarPagadoresAsync(creado.Id, $"[Jimaco Aprobaciones] Pago extraordinario a {tercero.Nombre} por ${dto.Valor:N0}", cuerpo, ct);

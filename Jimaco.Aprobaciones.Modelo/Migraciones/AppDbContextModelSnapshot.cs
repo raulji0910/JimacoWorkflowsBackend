@@ -1397,6 +1397,10 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Property<bool>("EsAnticipo")
                         .HasColumnType("bit");
 
+                    b.Property<string>("Grupo")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
                     b.Property<string>("Nombre")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -1416,8 +1420,749 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                             Activo = true,
                             CodigoCuenta = "133005",
                             EsAnticipo = true,
+                            Grupo = "Anticipos",
                             Nombre = "Anticipo a proveedores",
                             Orden = 1
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Activo = true,
+                            CodigoCuenta = "510551",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Gastos de personal",
+                            Nombre = "510551 DOTACION Y SUMINISTRO A TRABAJADORES",
+                            Orden = 100
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Activo = true,
+                            CodigoCuenta = "510563",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Gastos de personal",
+                            Nombre = "510563 CAPACITACION AL PERSONAL",
+                            Orden = 101
+                        },
+                        new
+                        {
+                            Id = 4,
+                            Activo = true,
+                            CodigoCuenta = "510566",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Gastos de personal",
+                            Nombre = "510566 GASTOS DEPORTIVOS Y DE RECREACION",
+                            Orden = 102
+                        },
+                        new
+                        {
+                            Id = 5,
+                            Activo = true,
+                            CodigoCuenta = "510584",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Gastos de personal",
+                            Nombre = "510584 GASTOS MEDICOS Y DROGAS",
+                            Orden = 103
+                        },
+                        new
+                        {
+                            Id = 6,
+                            Activo = true,
+                            CodigoCuenta = "511010",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Honorarios",
+                            Nombre = "511010 REVISORÍA FISCAL",
+                            Orden = 104
+                        },
+                        new
+                        {
+                            Id = 7,
+                            Activo = true,
+                            CodigoCuenta = "511095",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Honorarios",
+                            Nombre = "511095 OTROS",
+                            Orden = 105
+                        },
+                        new
+                        {
+                            Id = 8,
+                            Activo = true,
+                            CodigoCuenta = "511505",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Impuestos",
+                            Nombre = "511505 INDUSTRIA Y COMERCIO",
+                            Orden = 106
+                        },
+                        new
+                        {
+                            Id = 9,
+                            Activo = true,
+                            CodigoCuenta = "511506",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Impuestos",
+                            Nombre = "511506 4*1000 GRAVAMEN MOVIMIENTO FINANCIERO",
+                            Orden = 107
+                        },
+                        new
+                        {
+                            Id = 10,
+                            Activo = true,
+                            CodigoCuenta = "511595",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Impuestos",
+                            Nombre = "511595 OTROS",
+                            Orden = 108
+                        },
+                        new
+                        {
+                            Id = 11,
+                            Activo = true,
+                            CodigoCuenta = "512010",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Arrendamientos",
+                            Nombre = "512010 CONSTRUCCIONES Y EDIFICACIONES",
+                            Orden = 109
+                        },
+                        new
+                        {
+                            Id = 12,
+                            Activo = true,
+                            CodigoCuenta = "512040",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Arrendamientos",
+                            Nombre = "512040 FLOTA Y EQUIPO DE TRANSPORTE",
+                            Orden = 110
+                        },
+                        new
+                        {
+                            Id = 13,
+                            Activo = true,
+                            CodigoCuenta = "513010",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Seguros",
+                            Nombre = "513010 CUMPLIMIENTO",
+                            Orden = 111
+                        },
+                        new
+                        {
+                            Id = 14,
+                            Activo = true,
+                            CodigoCuenta = "513020",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Seguros",
+                            Nombre = "513020 VIDA COLECTIVA",
+                            Orden = 112
+                        },
+                        new
+                        {
+                            Id = 15,
+                            Activo = true,
+                            CodigoCuenta = "513025",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Seguros",
+                            Nombre = "513025 INCENDIO",
+                            Orden = 113
+                        },
+                        new
+                        {
+                            Id = 16,
+                            Activo = true,
+                            CodigoCuenta = "513030",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Seguros",
+                            Nombre = "513030 TERREMOTO",
+                            Orden = 114
+                        },
+                        new
+                        {
+                            Id = 17,
+                            Activo = true,
+                            CodigoCuenta = "513040",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Seguros",
+                            Nombre = "513040 FLOTA Y EQUIPO DE TRANSPORTE",
+                            Orden = 115
+                        },
+                        new
+                        {
+                            Id = 18,
+                            Activo = true,
+                            CodigoCuenta = "513505",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Servicios",
+                            Nombre = "513505 ASEO Y VIGILANCIA",
+                            Orden = 116
+                        },
+                        new
+                        {
+                            Id = 19,
+                            Activo = true,
+                            CodigoCuenta = "513520",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Servicios",
+                            Nombre = "513520 PROCESAMIENTO ELECTRONICO DE DATOS",
+                            Orden = 117
+                        },
+                        new
+                        {
+                            Id = 20,
+                            Activo = true,
+                            CodigoCuenta = "513525",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Servicios",
+                            Nombre = "513525 ACUEDUCTO Y ALCANTARILLADO",
+                            Orden = 118
+                        },
+                        new
+                        {
+                            Id = 21,
+                            Activo = true,
+                            CodigoCuenta = "513530",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Servicios",
+                            Nombre = "513530 ENERGIA ELECTRICA",
+                            Orden = 119
+                        },
+                        new
+                        {
+                            Id = 22,
+                            Activo = false,
+                            CodigoCuenta = "513535",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Servicios",
+                            Nombre = "513535 TELEFONO",
+                            Orden = 120
+                        },
+                        new
+                        {
+                            Id = 23,
+                            Activo = true,
+                            CodigoCuenta = "51353501",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Servicios",
+                            Nombre = "51353501 TELEFONO GRAVADO",
+                            Orden = 121
+                        },
+                        new
+                        {
+                            Id = 24,
+                            Activo = true,
+                            CodigoCuenta = "51353502",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Servicios",
+                            Nombre = "51353502 TELEFONO NO GRAVADO",
+                            Orden = 122
+                        },
+                        new
+                        {
+                            Id = 25,
+                            Activo = true,
+                            CodigoCuenta = "513550",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Servicios",
+                            Nombre = "513550 TRANSPORTE, FLETES Y ACARREOS",
+                            Orden = 123
+                        },
+                        new
+                        {
+                            Id = 26,
+                            Activo = true,
+                            CodigoCuenta = "513555",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Servicios",
+                            Nombre = "513555 GAS",
+                            Orden = 124
+                        },
+                        new
+                        {
+                            Id = 27,
+                            Activo = true,
+                            CodigoCuenta = "513595",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Servicios",
+                            Nombre = "513595 OTROS",
+                            Orden = 125
+                        },
+                        new
+                        {
+                            Id = 28,
+                            Activo = true,
+                            CodigoCuenta = "514010",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Gastos legales",
+                            Nombre = "514010 REGISTRO MERCANTIL",
+                            Orden = 126
+                        },
+                        new
+                        {
+                            Id = 29,
+                            Activo = true,
+                            CodigoCuenta = "514095",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Gastos legales",
+                            Nombre = "514095 OTROS",
+                            Orden = 127
+                        },
+                        new
+                        {
+                            Id = 30,
+                            Activo = true,
+                            CodigoCuenta = "514540",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Mantenimiento y reparaciones",
+                            Nombre = "514540 FLOTA Y EQUIPO DE TRANSPORTE",
+                            Orden = 128
+                        },
+                        new
+                        {
+                            Id = 31,
+                            Activo = true,
+                            CodigoCuenta = "515005",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Adecuación e instalación",
+                            Nombre = "515005 INSTALACIONES ELECTRICAS",
+                            Orden = 129
+                        },
+                        new
+                        {
+                            Id = 32,
+                            Activo = true,
+                            CodigoCuenta = "515015",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Adecuación e instalación",
+                            Nombre = "515015 REPARACIONES LOCATIVAS",
+                            Orden = 130
+                        },
+                        new
+                        {
+                            Id = 33,
+                            Activo = true,
+                            CodigoCuenta = "515095",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Adecuación e instalación",
+                            Nombre = "515095 OTROS",
+                            Orden = 131
+                        },
+                        new
+                        {
+                            Id = 34,
+                            Activo = true,
+                            CodigoCuenta = "515505",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Gastos de viaje",
+                            Nombre = "515505 ALOJAMIENTO Y MANUTENCION",
+                            Orden = 132
+                        },
+                        new
+                        {
+                            Id = 35,
+                            Activo = true,
+                            CodigoCuenta = "515515",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Gastos de viaje",
+                            Nombre = "515515 PASAJES AEREOS",
+                            Orden = 133
+                        },
+                        new
+                        {
+                            Id = 36,
+                            Activo = true,
+                            CodigoCuenta = "515520",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Gastos de viaje",
+                            Nombre = "515520 PASAJES TERRESTRES",
+                            Orden = 134
+                        },
+                        new
+                        {
+                            Id = 37,
+                            Activo = true,
+                            CodigoCuenta = "515595",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Gastos de viaje",
+                            Nombre = "515595 OTROS",
+                            Orden = 135
+                        },
+                        new
+                        {
+                            Id = 38,
+                            Activo = true,
+                            CodigoCuenta = "516005",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Depreciaciones",
+                            Nombre = "516005 CONSTRUCCIONES Y EDIFICACIONES",
+                            Orden = 136
+                        },
+                        new
+                        {
+                            Id = 39,
+                            Activo = true,
+                            CodigoCuenta = "516015",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Depreciaciones",
+                            Nombre = "516015 EQUIPO DE OFICINA",
+                            Orden = 137
+                        },
+                        new
+                        {
+                            Id = 40,
+                            Activo = true,
+                            CodigoCuenta = "516020",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Depreciaciones",
+                            Nombre = "516020 EQUIPO DE COMPUTACION Y COMUNICACION",
+                            Orden = 138
+                        },
+                        new
+                        {
+                            Id = 41,
+                            Activo = true,
+                            CodigoCuenta = "516035",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Depreciaciones",
+                            Nombre = "516035 FLOTA Y EQUIPO DE TRANSPORTE",
+                            Orden = 139
+                        },
+                        new
+                        {
+                            Id = 42,
+                            Activo = true,
+                            CodigoCuenta = "516070",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Depreciaciones",
+                            Nombre = "516070 MEJORA EN PROPIEDADES AJENAS",
+                            Orden = 140
+                        },
+                        new
+                        {
+                            Id = 43,
+                            Activo = true,
+                            CodigoCuenta = "519505",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Diversos",
+                            Nombre = "519505 COMISIONES",
+                            Orden = 141
+                        },
+                        new
+                        {
+                            Id = 44,
+                            Activo = true,
+                            CodigoCuenta = "519515",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Diversos",
+                            Nombre = "519515 MUSICA AMBIENTAL",
+                            Orden = 142
+                        },
+                        new
+                        {
+                            Id = 45,
+                            Activo = true,
+                            CodigoCuenta = "519525",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Diversos",
+                            Nombre = "519525 ELEMENTOS DE ASEO Y CAFETERIA",
+                            Orden = 143
+                        },
+                        new
+                        {
+                            Id = 46,
+                            Activo = true,
+                            CodigoCuenta = "519530",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Diversos",
+                            Nombre = "519530 UTILES, PAPELERIA Y FOTOCOPIAS",
+                            Orden = 144
+                        },
+                        new
+                        {
+                            Id = 47,
+                            Activo = true,
+                            CodigoCuenta = "519535",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Diversos",
+                            Nombre = "519535 COMBUSTIBLES Y LUBRICANTES",
+                            Orden = 145
+                        },
+                        new
+                        {
+                            Id = 48,
+                            Activo = true,
+                            CodigoCuenta = "519540",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Diversos",
+                            Nombre = "519540 ENVASES Y EMPAQUES",
+                            Orden = 146
+                        },
+                        new
+                        {
+                            Id = 49,
+                            Activo = true,
+                            CodigoCuenta = "519560",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Diversos",
+                            Nombre = "519560 CASINO Y RESTAURANTE",
+                            Orden = 147
+                        },
+                        new
+                        {
+                            Id = 50,
+                            Activo = true,
+                            CodigoCuenta = "519565",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Diversos",
+                            Nombre = "519565 PARQUEADEROS",
+                            Orden = 148
+                        },
+                        new
+                        {
+                            Id = 51,
+                            Activo = true,
+                            CodigoCuenta = "519595",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Diversos",
+                            Nombre = "519595 OTROS",
+                            Orden = 149
+                        },
+                        new
+                        {
+                            Id = 52,
+                            Activo = true,
+                            CodigoCuenta = "522040",
+                            EsAnticipo = false,
+                            Grupo = "Ventas · Arrendamientos",
+                            Nombre = "522040 FLOTA Y EQUIPO DE TRANSPORTE",
+                            Orden = 150
+                        },
+                        new
+                        {
+                            Id = 53,
+                            Activo = true,
+                            CodigoCuenta = "523020",
+                            EsAnticipo = false,
+                            Grupo = "Ventas · Seguros",
+                            Nombre = "523020 VIDA COLECTIVA",
+                            Orden = 151
+                        },
+                        new
+                        {
+                            Id = 54,
+                            Activo = true,
+                            CodigoCuenta = "523075",
+                            EsAnticipo = false,
+                            Grupo = "Ventas · Seguros",
+                            Nombre = "523075 OBLIGATORIO ACCIDENTE DE TRANSITO",
+                            Orden = 152
+                        },
+                        new
+                        {
+                            Id = 55,
+                            Activo = true,
+                            CodigoCuenta = "523515",
+                            EsAnticipo = false,
+                            Grupo = "Ventas · Servicios",
+                            Nombre = "523515 ASISTENCIA TECNICA",
+                            Orden = 153
+                        },
+                        new
+                        {
+                            Id = 56,
+                            Activo = true,
+                            CodigoCuenta = "523525",
+                            EsAnticipo = false,
+                            Grupo = "Ventas · Servicios",
+                            Nombre = "523525 ACUEDUCTO Y ALCANTARILLADO",
+                            Orden = 154
+                        },
+                        new
+                        {
+                            Id = 57,
+                            Activo = true,
+                            CodigoCuenta = "523535",
+                            EsAnticipo = false,
+                            Grupo = "Ventas · Servicios",
+                            Nombre = "523535 TELEFONO",
+                            Orden = 155
+                        },
+                        new
+                        {
+                            Id = 58,
+                            Activo = true,
+                            CodigoCuenta = "523550",
+                            EsAnticipo = false,
+                            Grupo = "Ventas · Servicios",
+                            Nombre = "523550 TRANSPORTE, FLETES Y ACARREOS",
+                            Orden = 156
+                        },
+                        new
+                        {
+                            Id = 59,
+                            Activo = true,
+                            CodigoCuenta = "523560",
+                            EsAnticipo = false,
+                            Grupo = "Ventas · Servicios",
+                            Nombre = "523560 PROPAGANDA Y PUBLICIDAD",
+                            Orden = 157
+                        },
+                        new
+                        {
+                            Id = 60,
+                            Activo = true,
+                            CodigoCuenta = "523595",
+                            EsAnticipo = false,
+                            Grupo = "Ventas · Servicios",
+                            Nombre = "523595 OTROS",
+                            Orden = 158
+                        },
+                        new
+                        {
+                            Id = 61,
+                            Activo = true,
+                            CodigoCuenta = "524540",
+                            EsAnticipo = false,
+                            Grupo = "Ventas · Mantenimiento y reparaciones",
+                            Nombre = "524540 FLOTA Y EQUIPO DE TRANSPORTE - MANTENIMIENTO DE VEHICULO",
+                            Orden = 159
+                        },
+                        new
+                        {
+                            Id = 62,
+                            Activo = true,
+                            CodigoCuenta = "525095",
+                            EsAnticipo = false,
+                            Grupo = "Ventas · Adecuación e instalación",
+                            Nombre = "525095 OTROS",
+                            Orden = 160
+                        },
+                        new
+                        {
+                            Id = 63,
+                            Activo = true,
+                            CodigoCuenta = "525505",
+                            EsAnticipo = false,
+                            Grupo = "Ventas · Gastos de viaje",
+                            Nombre = "525505 ALOJAMIENTO Y MANUTENCION",
+                            Orden = 161
+                        },
+                        new
+                        {
+                            Id = 64,
+                            Activo = true,
+                            CodigoCuenta = "525515",
+                            EsAnticipo = false,
+                            Grupo = "Ventas · Gastos de viaje",
+                            Nombre = "525515 PASAJES AEREOS",
+                            Orden = 162
+                        },
+                        new
+                        {
+                            Id = 65,
+                            Activo = true,
+                            CodigoCuenta = "525520",
+                            EsAnticipo = false,
+                            Grupo = "Ventas · Gastos de viaje",
+                            Nombre = "525520 PASAJES TERRESTRES",
+                            Orden = 163
+                        },
+                        new
+                        {
+                            Id = 66,
+                            Activo = true,
+                            CodigoCuenta = "525595",
+                            EsAnticipo = false,
+                            Grupo = "Ventas · Gastos de viaje",
+                            Nombre = "525595 OTROS",
+                            Orden = 164
+                        },
+                        new
+                        {
+                            Id = 67,
+                            Activo = true,
+                            CodigoCuenta = "529525",
+                            EsAnticipo = false,
+                            Grupo = "Ventas · Diversos",
+                            Nombre = "529525 ELEMENTOS DE ASEO Y CAFETERIA",
+                            Orden = 165
+                        },
+                        new
+                        {
+                            Id = 68,
+                            Activo = true,
+                            CodigoCuenta = "529530",
+                            EsAnticipo = false,
+                            Grupo = "Ventas · Diversos",
+                            Nombre = "529530 UTILES, PAPELERIA Y FOTOCOPIAS",
+                            Orden = 166
+                        },
+                        new
+                        {
+                            Id = 69,
+                            Activo = true,
+                            CodigoCuenta = "529535",
+                            EsAnticipo = false,
+                            Grupo = "Ventas · Diversos",
+                            Nombre = "529535 COMBUSTIBLES Y LUBRICANTES",
+                            Orden = 167
+                        },
+                        new
+                        {
+                            Id = 70,
+                            Activo = true,
+                            CodigoCuenta = "529540",
+                            EsAnticipo = false,
+                            Grupo = "Ventas · Diversos",
+                            Nombre = "529540 ENVASES Y EMPAQUES",
+                            Orden = 168
+                        },
+                        new
+                        {
+                            Id = 71,
+                            Activo = true,
+                            CodigoCuenta = "529550",
+                            EsAnticipo = false,
+                            Grupo = "Ventas · Diversos",
+                            Nombre = "529550 ESTAMPILLAS",
+                            Orden = 169
+                        },
+                        new
+                        {
+                            Id = 72,
+                            Activo = true,
+                            CodigoCuenta = "529560",
+                            EsAnticipo = false,
+                            Grupo = "Ventas · Diversos",
+                            Nombre = "529560 CASINO Y RESTAURANTE",
+                            Orden = 170
+                        },
+                        new
+                        {
+                            Id = 73,
+                            Activo = true,
+                            CodigoCuenta = "529565",
+                            EsAnticipo = false,
+                            Grupo = "Ventas · Diversos",
+                            Nombre = "529565 PARQUEADEROS",
+                            Orden = 171
+                        },
+                        new
+                        {
+                            Id = 74,
+                            Activo = true,
+                            CodigoCuenta = "529566",
+                            EsAnticipo = false,
+                            Grupo = "Ventas · Diversos",
+                            Nombre = "529566 PEAJES",
+                            Orden = 172
+                        },
+                        new
+                        {
+                            Id = 75,
+                            Activo = true,
+                            CodigoCuenta = "529595",
+                            EsAnticipo = false,
+                            Grupo = "Ventas · Diversos",
+                            Nombre = "529595 OTROS",
+                            Orden = 173
                         });
                 });
 

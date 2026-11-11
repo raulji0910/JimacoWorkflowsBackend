@@ -306,6 +306,10 @@ public class TipoGiro
     [MaxLength(20)]
     public required string CodigoCuenta { get; set; }
 
+    /// <summary>Grupo del PUC para mostrar la lista ordenada (ej. "Administración · Servicios") — ver TiposGiroSemilla.</summary>
+    [MaxLength(80)]
+    public string? Grupo { get; set; }
+
     public bool EsAnticipo { get; set; }
 
     public bool Activo { get; set; } = true;

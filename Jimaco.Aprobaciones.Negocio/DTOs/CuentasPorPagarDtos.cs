@@ -216,7 +216,7 @@ public record RelacionCreadaDto(int Numero, int Ordenes, decimal Total);
 
 // ---- Pago extraordinario (2026-11-09) ----
 
-public record TipoGiroDto(int Id, string Nombre, bool EsAnticipo);
+public record TipoGiroDto(int Id, string Nombre, bool EsAnticipo, string CodigoCuenta = "", string? Grupo = null);
 
 public record TerceroWODto(int IdTerceroWO, string Identificacion, string Nombre);
 

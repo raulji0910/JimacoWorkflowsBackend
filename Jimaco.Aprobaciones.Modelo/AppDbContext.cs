@@ -304,7 +304,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         modelBuilder.Entity<TipoGiro>(e =>
         {
-            e.HasData(new TipoGiro { Id = 1, Nombre = "Anticipo a proveedores", CodigoCuenta = "133005", EsAnticipo = true, Activo = true, Orden = 1 });
+            e.HasData(TiposGiroSemilla.Todos);
         });
 
         modelBuilder.Entity<TerceroWO>(e =>
