@@ -61,6 +61,7 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
                 var representante = grupo.OrderBy(d => d.Id).First();
                 var fechaAprobacion = grupo.Min(FechaAnclaje);
                 var completa = representante.Renglones.All(r => r.CantidadDisponible >= r.Cantidad);
+                var fechaCompletada = completa ? grupo.Max(d => d.FechaCompletada) : null;
                 var enAlerta = !completa && (ahora - fechaAprobacion).TotalHours >= horasUmbral;
                 var ocs = grupo
                     .Where(d => d.InstanciaDocumentoId is not null)
@@ -76,7 +77,7 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
                     representante.Cliente, representante.CampoEntrega, representante.ElaboradoPor,
                     fechaAprobacion, completa, enAlerta,
                     representante.Renglones.Count, representante.Renglones.Count(r => r.CantidadDisponible >= r.Cantidad),
-                    total, remisionado, remisionadoParcial);
+                    total, remisionado, remisionadoParcial, fechaCompletada);
             })
             .OrderBy(dto => dto.FechaAprobacionComercial)
             .ToList();
@@ -162,6 +163,7 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
 
         var nombreUsuario = await db.Usuarios.Where(u => u.Id == usuarioId).Select(u => u.Nombre).FirstOrDefaultAsync(ct);
         var ahora = timeProvider.GetUtcNow().UtcDateTime;
+        var completasAntes = grupo.Where(EstaCompleta).Select(c => c.Id).ToHashSet();
 
         var renglonesPorId = hoja.Renglones.ToDictionary(r => r.Id);
         foreach (var cambio in dto.Renglones)
@@ -213,6 +215,7 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
             }
         }
 
+        MarcarFechaCompletada(grupo, completasAntes, ahora);
         await db.SaveChangesAsync(ct);
         await AvisarSiQuedoCompletaYRemisionadaAsync(grupo, ct);
     }
@@ -420,6 +423,7 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
         var codigosRestaurados = new HashSet<string>();
 
         var ahora = timeProvider.GetUtcNow().UtcDateTime;
+        var completasAntes = grupo.Where(EstaCompleta).Select(c => c.Id).ToHashSet();
         var primera = true;
         foreach (var copia in grupo.OrderBy(c => c.Id))
         {
@@ -445,8 +449,28 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
             foreach (var deposito in depositoPorCodigo[codigo])
                 deposito.CantidadPorRestaurar = 0;
 
+        MarcarFechaCompletada(grupo, completasAntes, ahora);
         await db.SaveChangesAsync(ct);
         await AvisarSiQuedoCompletaYRemisionadaAsync(grupo, ct);
+    }
+
+    private static bool EstaCompleta(DocumentoVinculado d) =>
+        d.Renglones.Count > 0 && d.Renglones.All(r => r.CantidadDisponible >= r.Cantidad);
+
+    /// <summary>
+    /// FechaCompletada solo se fija cuando la copia PASA de incompleta a completa en este guardado; si
+    /// deja de estar completa se borra. Una hoja que ya estaba completa conserva lo que tenía (aunque
+    /// sea null) — así una completa vieja no aparece como "recién completada" por un refresco de WO.
+    /// </summary>
+    private static void MarcarFechaCompletada(IEnumerable<DocumentoVinculado> copias, HashSet<int> completasAntes, DateTime ahora)
+    {
+        foreach (var copia in copias)
+        {
+            if (!EstaCompleta(copia))
+                copia.FechaCompletada = null;
+            else if (!completasAntes.Contains(copia.Id))
+                copia.FechaCompletada = ahora;
+        }
     }
 
     // Bug real reportado por Logística (2026-10-27, Hoja 16099/PJ-1522 repetido): emparejar renglón
