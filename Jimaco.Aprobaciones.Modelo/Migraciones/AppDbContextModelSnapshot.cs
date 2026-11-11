@@ -1686,6 +1686,16 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                         },
                         new
                         {
+                            Id = 76,
+                            Activo = true,
+                            CodigoCuenta = "51359505",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Servicios",
+                            Nombre = "51359505 OTROS",
+                            Orden = 125
+                        },
+                        new
+                        {
                             Id = 28,
                             Activo = true,
                             CodigoCuenta = "514010",
@@ -1872,6 +1882,16 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                             EsAnticipo = false,
                             Grupo = "Administración · Diversos",
                             Nombre = "519530 UTILES, PAPELERIA Y FOTOCOPIAS",
+                            Orden = 144
+                        },
+                        new
+                        {
+                            Id = 77,
+                            Activo = true,
+                            CodigoCuenta = "51953001",
+                            EsAnticipo = false,
+                            Grupo = "Administración · Diversos",
+                            Nombre = "51953001 PAPELERIA",
                             Orden = 144
                         },
                         new
