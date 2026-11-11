@@ -271,13 +271,22 @@ if (string.IsNullOrWhiteSpace(connectionStringEscritura))
 }
 else if (bool.TryParse(config["CuentasPorPagar:CrearCE"], out var crearCeActivo) && !crearCeActivo)
 {
+    // Freno de emergencia local: aunque en la página esté encendido, CrearCE=false en el appsettings apaga.
     Console.WriteLine($"[{DateTime.Now:s}] CuentasPorPagar:CrearCE=false — no se crean comprobantes de egreso de pagos a proveedor.");
+}
+else if (await ObtenerConfiguracionCEAsync() is not { } configuracionCe)
+{
+    // Ya avisado adentro (Api sin el endpoint o caída): sin configuración NO se crea nada.
+}
+else if (!configuracionCe.CrearCEEnWorldOffice)
+{
+    Console.WriteLine($"[{DateTime.Now:s}] Crear CE en World Office está APAGADO en la página (Administración → Cuentas por pagar) — no se crean comprobantes de egreso.");
 }
 else
 {
     var configCe = new ConfiguracionCE(
-        // CEJ-2 (prefijo de prueba de CE) por defecto A PROPÓSITO: producción tiene que poner "CEJ" explícito.
-        Prefijo: config["CuentasPorPagar:PrefijoCE"] ?? "CEJ-2",
+        // Desde 2026-11-11 el prefijo lo maneja un administrador en la página (arranca en CEJ-2, de prueba).
+        Prefijo: configuracionCe.PrefijoCE,
         IdTerceroElabora: int.TryParse(config["CuentasPorPagar:IdTerceroElaboraCE"], out var idElabora) ? idElabora : 9700,
         UsuarioWO: config["CuentasPorPagar:UsuarioWOCE"] ?? "CAMILO",
         NomPc: config["CuentasPorPagar:NomPcCE"] ?? "APROBACIONES");
@@ -286,7 +295,15 @@ else
     IReadOnlyList<PendienteCreacionCEDto> pendientesCe;
     try
     {
-        pendientesCe = await jimaco.ListarPendientesCreacionCEAsync();
+        if (!await escritorCe.PrefijoExisteAsync())
+        {
+            Console.Error.WriteLine($"[{DateTime.Now:s}] ERROR: el prefijo de CE \"{configCe.Prefijo}\" configurado en la página no tiene ningún CE en World Office — no se crea nada (revisar Administración → Cuentas por pagar).");
+            pendientesCe = [];
+        }
+        else
+        {
+            pendientesCe = await jimaco.ListarPendientesCreacionCEAsync();
+        }
     }
     catch (Exception ex)
     {
@@ -705,4 +722,18 @@ async Task<DocumentoVinculadoInputDto?> ObtenerDocumentoVinculadoInputAsync(deci
             UnidadMedida: r.UnidadMedida,
             ValorUnitario: r.ValorUnitario,
             PorcentajeIva: r.PorcentajeIva ?? 0m)).ToList());
+}
+
+// Configuración de CE de la página (2026-11-11). null = no se pudo leer → no se crea ningún CE.
+async Task<ConfiguracionCuentasPorPagarDto?> ObtenerConfiguracionCEAsync()
+{
+    try
+    {
+        return await jimaco.ObtenerConfiguracionCEAsync();
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"[{DateTime.Now:s}] ERROR leyendo la configuración de CE de la Api (no se crean CE en esta corrida): {ex.Message}");
+        return null;
+    }
 }

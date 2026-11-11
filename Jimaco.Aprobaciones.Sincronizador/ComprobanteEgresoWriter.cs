@@ -51,6 +51,21 @@ public class ComprobanteEgresoWriter(string connectionString, ConfiguracionCE co
     /// <summary>Marca que va en la nota del encabezado — la usa la verificación de "ya existía" si una corrida anterior creó el CE pero no alcanzó a avisarle a la Api.</summary>
     public static string Marca(int instanciaDocumentoId) => $"(APROBACIONES #{instanciaDocumentoId})";
 
+    /// <summary>
+    /// Seguro (2026-11-11, el prefijo ahora se escribe en la página): el prefijo tiene que tener al
+    /// menos un CE en WO. Así un error de digitación ("CJE") no arranca una numeración nueva desde 1.
+    /// </summary>
+    public async Task<bool> PrefijoExisteAsync(CancellationToken ct = default)
+    {
+        await using var conexion = new SqlConnection(connectionString);
+        await conexion.OpenAsync(ct);
+        return await conexion.ExecuteScalarAsync<bool>(new CommandDefinition("""
+            SELECT CASE WHEN EXISTS (SELECT 1 FROM [CuentasContables - Asientos]
+                                     WHERE IdEmpresa = 1 AND IdCuentaContableDocumento = 'ce' AND prefijo = @Prefijo)
+                        THEN 1 ELSE 0 END
+            """, new { config.Prefijo }, cancellationToken: ct));
+    }
+
     public async Task<CreacionCEResultado> CrearAsync(PendienteCreacionCEDto pago, CancellationToken ct = default)
     {
         for (var intento = 1; ; intento++)

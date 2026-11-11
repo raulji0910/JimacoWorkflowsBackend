@@ -9,9 +9,22 @@ namespace Jimaco.Aprobaciones.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class CuentasPorPagarController(ICuentasPorPagarService cuentasPorPagarService) : ControllerBase
+public class CuentasPorPagarController(ICuentasPorPagarService cuentasPorPagarService,
+    IConfiguracionCuentasPorPagarService configuracionService) : ControllerBase
 {
     private int UsuarioActualId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+    // ---- Configuración (2026-11-11): prefijo del CE y "crear CE en WO" — solo administradores. ----
+
+    [HttpGet("configuracion")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<ConfiguracionCuentasPorPagarDto>> Configuracion(CancellationToken ct) =>
+        Ok(await configuracionService.ObtenerAsync(ct));
+
+    [HttpPut("configuracion")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<ConfiguracionCuentasPorPagarDto>> ActualizarConfiguracion(ActualizarConfiguracionCuentasPorPagarDto dto, CancellationToken ct) =>
+        Ok(await configuracionService.ActualizarAsync(dto, UsuarioActualId, ct));
 
     [HttpGet]
     public async Task<ActionResult<ResumenCuentasPorPagarDto>> Resumen(CancellationToken ct) =>

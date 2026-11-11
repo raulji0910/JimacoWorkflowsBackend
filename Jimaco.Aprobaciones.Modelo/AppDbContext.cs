@@ -43,6 +43,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<RelacionPago> RelacionesPago => Set<RelacionPago>();
     public DbSet<LotePago> LotesPago => Set<LotePago>();
     public DbSet<TipoGiro> TiposGiro => Set<TipoGiro>();
+    public DbSet<ConfiguracionCuentasPorPagar> ConfiguracionesCuentasPorPagar => Set<ConfiguracionCuentasPorPagar>();
     public DbSet<TerceroWO> TercerosWO => Set<TerceroWO>();
     public DbSet<ComprobanteEgreso> ComprobantesEgreso => Set<ComprobanteEgreso>();
     public DbSet<RenglonComprobanteEgreso> RenglonesComprobanteEgreso => Set<RenglonComprobanteEgreso>();
@@ -306,6 +307,21 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<TipoGiro>(e =>
         {
             e.HasData(TiposGiroSemilla.Todos);
+        });
+
+        modelBuilder.Entity<ConfiguracionCuentasPorPagar>(e =>
+        {
+            e.Property(c => c.Id).ValueGeneratedNever();
+            e.Property(c => c.FechaActualizacion).HasConversion(ConversorFechaUtcNullable);
+            e.HasOne(c => c.ActualizadoPorUsuario).WithMany().HasForeignKey(c => c.ActualizadoPorUsuarioId)
+                .OnDelete(DeleteBehavior.NoAction);
+            // Arranca apagada y con el prefijo de prueba (ver la entidad).
+            e.HasData(new ConfiguracionCuentasPorPagar
+            {
+                Id = ConfiguracionCuentasPorPagar.IdUnico,
+                PrefijoCE = ConfiguracionCuentasPorPagar.PrefijoCEPorDefecto,
+                CrearCEEnWorldOffice = false
+            });
         });
 
         modelBuilder.Entity<TerceroWO>(e =>

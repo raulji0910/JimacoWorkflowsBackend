@@ -16,7 +16,7 @@ namespace Jimaco.Aprobaciones.Api.Controllers;
 [Route("api/[controller]")]
 [Authorize]
 public class SincronizacionController(IInstanciaDocumentoService instanciaService, IHojaAlistamientoService hojaAlistamientoService,
-    ICuentasPorPagarService cuentasPorPagarService) : ControllerBase
+    ICuentasPorPagarService cuentasPorPagarService, IConfiguracionCuentasPorPagarService configuracionCuentasPorPagarService) : ControllerBase
 {
     [HttpGet("pendientes-wo")]
     public async Task<ActionResult<IReadOnlyList<PendienteEscrituraWODto>>> ListarPendientesWO(CancellationToken ct) =>
@@ -115,6 +115,11 @@ public class SincronizacionController(IInstanciaDocumentoService instanciaServic
         await cuentasPorPagarService.GuardarTercerosAsync(dto, ct);
         return Ok();
     }
+
+    // Prefijo del CE y si se crean o no (2026-11-11) — lo maneja un administrador desde la página.
+    [HttpGet("pagos-proveedor/configuracion-ce")]
+    public async Task<ActionResult<ConfiguracionCuentasPorPagarDto>> ConfiguracionCE(CancellationToken ct) =>
+        Ok(await configuracionCuentasPorPagarService.ObtenerAsync(ct));
 
     [HttpGet("pagos-proveedor/pendientes-ce")]
     public async Task<ActionResult<IReadOnlyList<PendienteCreacionCEDto>>> ListarPendientesCreacionCE(CancellationToken ct) =>

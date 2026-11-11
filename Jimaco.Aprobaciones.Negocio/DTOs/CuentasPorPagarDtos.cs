@@ -291,3 +291,10 @@ public record LoteOrdenDto(int InstanciaDocumentoId, string? NumeroReferencia, s
 
 public record LotePagoDto(int Id, int Numero, DateTime Fecha, DateTime FechaPago, string? NombreBanco, decimal Total, string? PagadoPor,
     bool TieneSoporte, IReadOnlyList<LoteOrdenDto> Ordenes);
+
+// ---- Configuración de Cuentas por Pagar que maneja el administrador (2026-11-11) ----
+
+/// <summary>Lo que ve el administrador y lo que pide el Sincronizador antes de crear CE en WO.</summary>
+public record ConfiguracionCuentasPorPagarDto(string PrefijoCE, bool CrearCEEnWorldOffice, DateTime? FechaActualizacion, string? ActualizadoPor);
+
+public record ActualizarConfiguracionCuentasPorPagarDto(string PrefijoCE, bool CrearCEEnWorldOffice);

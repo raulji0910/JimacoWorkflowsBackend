@@ -172,6 +172,20 @@ public class JimacoAprobacionesClient(HttpClient http, string email, string pass
         await LanzarSiErrorAsync(response, ct);
     }
 
+    /// <summary>Prefijo del CE y si se crean (2026-11-11) — lo maneja un administrador desde la página.</summary>
+    public async Task<ConfiguracionCuentasPorPagarDto> ObtenerConfiguracionCEAsync(CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/sincronizacion/pagos-proveedor/configuracion-ce");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+
+        return (await response.Content.ReadFromJsonAsync<ConfiguracionCuentasPorPagarDto>(JsonOpciones, ct))!;
+    }
+
     public async Task<IReadOnlyList<PendienteCreacionCEDto>> ListarPendientesCreacionCEAsync(CancellationToken ct = default)
     {
         await AsegurarTokenAsync(ct);

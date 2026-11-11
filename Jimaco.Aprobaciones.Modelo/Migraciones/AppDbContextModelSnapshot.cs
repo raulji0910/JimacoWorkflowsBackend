@@ -304,6 +304,40 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.ToTable("ComprobantesEgreso");
                 });
 
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.ConfiguracionCuentasPorPagar", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ActualizadoPorUsuarioId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("CrearCEEnWorldOffice")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("FechaActualizacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PrefijoCE")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActualizadoPorUsuarioId");
+
+                    b.ToTable("ConfiguracionesCuentasPorPagar");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            CrearCEEnWorldOffice = false,
+                            PrefijoCE = "CEJ-2"
+                        });
+                });
+
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.CuentaBancoWO", b =>
                 {
                     b.Property<int>("Id")
@@ -2302,6 +2336,16 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                         .IsRequired();
 
                     b.Navigation("InstanciaDocumento");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.ConfiguracionCuentasPorPagar", b =>
+                {
+                    b.HasOne("Jimaco.Aprobaciones.Modelo.Entidades.Usuario", "ActualizadoPorUsuario")
+                        .WithMany()
+                        .HasForeignKey("ActualizadoPorUsuarioId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.Navigation("ActualizadoPorUsuario");
                 });
 
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.DefinicionFlujo", b =>
