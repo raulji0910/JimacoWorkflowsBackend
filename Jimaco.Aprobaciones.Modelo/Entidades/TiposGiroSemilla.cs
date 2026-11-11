@@ -4,8 +4,8 @@ namespace Jimaco.Aprobaciones.Modelo.Entidades;
 /// Tipos de giro del pago extraordinario (2026-11-11): las cuentas de gasto que entregó Contabilidad
 /// en Cuentas_Gastos.xlsx (74 cuentas), más el anticipo a proveedores (Id 1). El Nombre es tal
 /// cual lo usa Contabilidad ("código NOMBRE"); el Grupo es el grupo del PUC, para mostrar la lista ordenada.
-/// Las cuentas que tienen subcuentas en la lista (ej. 513535 TELÉFONO) quedan inactivas: WO solo deja
-/// mover cuentas auxiliares. Generado desde el Excel — para cambiar la lista, nueva migración.
+/// Las cuentas de mayor quedan inactivas porque WO solo deja mover auxiliares: 513535 TELÉFONO, y
+/// 513595 OTROS y 519530 ÚTILES (validadas contra WO el 2026-11-11, tienen subcuentas). Generado desde el Excel — para cambiar la lista, nueva migración.
 /// </summary>
 public static class TiposGiroSemilla
 {
@@ -37,7 +37,7 @@ public static class TiposGiroSemilla
         new() { Id = 24, Nombre = "51353502 TELEFONO NO GRAVADO", CodigoCuenta = "51353502", Grupo = "Administración · Servicios", EsAnticipo = false, Activo = true, Orden = 122 },
         new() { Id = 25, Nombre = "513550 TRANSPORTE, FLETES Y ACARREOS", CodigoCuenta = "513550", Grupo = "Administración · Servicios", EsAnticipo = false, Activo = true, Orden = 123 },
         new() { Id = 26, Nombre = "513555 GAS", CodigoCuenta = "513555", Grupo = "Administración · Servicios", EsAnticipo = false, Activo = true, Orden = 124 },
-        new() { Id = 27, Nombre = "513595 OTROS", CodigoCuenta = "513595", Grupo = "Administración · Servicios", EsAnticipo = false, Activo = true, Orden = 125 },
+        new() { Id = 27, Nombre = "513595 OTROS", CodigoCuenta = "513595", Grupo = "Administración · Servicios", EsAnticipo = false, Activo = false, Orden = 125 },
         new() { Id = 28, Nombre = "514010 REGISTRO MERCANTIL", CodigoCuenta = "514010", Grupo = "Administración · Gastos legales", EsAnticipo = false, Activo = true, Orden = 126 },
         new() { Id = 29, Nombre = "514095 OTROS", CodigoCuenta = "514095", Grupo = "Administración · Gastos legales", EsAnticipo = false, Activo = true, Orden = 127 },
         new() { Id = 30, Nombre = "514540 FLOTA Y EQUIPO DE TRANSPORTE", CodigoCuenta = "514540", Grupo = "Administración · Mantenimiento y reparaciones", EsAnticipo = false, Activo = true, Orden = 128 },
@@ -56,7 +56,7 @@ public static class TiposGiroSemilla
         new() { Id = 43, Nombre = "519505 COMISIONES", CodigoCuenta = "519505", Grupo = "Administración · Diversos", EsAnticipo = false, Activo = true, Orden = 141 },
         new() { Id = 44, Nombre = "519515 MUSICA AMBIENTAL", CodigoCuenta = "519515", Grupo = "Administración · Diversos", EsAnticipo = false, Activo = true, Orden = 142 },
         new() { Id = 45, Nombre = "519525 ELEMENTOS DE ASEO Y CAFETERIA", CodigoCuenta = "519525", Grupo = "Administración · Diversos", EsAnticipo = false, Activo = true, Orden = 143 },
-        new() { Id = 46, Nombre = "519530 UTILES, PAPELERIA Y FOTOCOPIAS", CodigoCuenta = "519530", Grupo = "Administración · Diversos", EsAnticipo = false, Activo = true, Orden = 144 },
+        new() { Id = 46, Nombre = "519530 UTILES, PAPELERIA Y FOTOCOPIAS", CodigoCuenta = "519530", Grupo = "Administración · Diversos", EsAnticipo = false, Activo = false, Orden = 144 },
         new() { Id = 47, Nombre = "519535 COMBUSTIBLES Y LUBRICANTES", CodigoCuenta = "519535", Grupo = "Administración · Diversos", EsAnticipo = false, Activo = true, Orden = 145 },
         new() { Id = 48, Nombre = "519540 ENVASES Y EMPAQUES", CodigoCuenta = "519540", Grupo = "Administración · Diversos", EsAnticipo = false, Activo = true, Orden = 146 },
         new() { Id = 49, Nombre = "519560 CASINO Y RESTAURANTE", CodigoCuenta = "519560", Grupo = "Administración · Diversos", EsAnticipo = false, Activo = true, Orden = 147 },

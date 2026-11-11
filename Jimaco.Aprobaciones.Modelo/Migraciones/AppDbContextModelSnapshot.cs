@@ -1677,7 +1677,7 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                         new
                         {
                             Id = 27,
-                            Activo = true,
+                            Activo = false,
                             CodigoCuenta = "513595",
                             EsAnticipo = false,
                             Grupo = "Administración · Servicios",
@@ -1867,7 +1867,7 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                         new
                         {
                             Id = 46,
-                            Activo = true,
+                            Activo = false,
                             CodigoCuenta = "519530",
                             EsAnticipo = false,
                             Grupo = "Administración · Diversos",
