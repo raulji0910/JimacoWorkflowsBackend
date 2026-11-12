@@ -1534,6 +1534,17 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Property<DateTime>("FechaCarga")
                         .HasColumnType("datetime2");
 
+                    b.Property<bool?>("IaHayFirma")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("IaNumeroLeido")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("IaObservacion")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<string>("NombreArchivo")
                         .IsRequired()
                         .HasMaxLength(300)
@@ -1559,6 +1570,9 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
 
                     b.Property<int>("Tipo")
                         .HasColumnType("int");
+
+                    b.Property<bool>("Valido")
+                        .HasColumnType("bit");
 
                     b.HasKey("Id");
 

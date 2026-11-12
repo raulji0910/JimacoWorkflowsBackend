@@ -68,7 +68,11 @@ public record SoporteRemisionDto(
     long TamanoBytes,
     string? QrLeido,
     string SubidoPor,
-    DateTime FechaCarga);
+    DateTime FechaCarga,
+    bool Valido = false,
+    string? IaNumeroLeido = null,
+    bool? IaHayFirma = null,
+    string? IaObservacion = null);
 
 public record RemisionDetalleDto(
     int Id,
@@ -101,3 +105,20 @@ public record RemisionDetalleDto(
 
 /// <summary>Un archivo del soporte de entrega, ya leído (contenido) junto con el QR que encontró el navegador.</summary>
 public record ArchivoSoporteEntrega(string NombreArchivo, string? ContentType, Stream Contenido, long TamanoBytes, string? QrLeido);
+
+/// <summary>
+/// Resultado de revisar UN archivo de soporte (2026-11-12): Valido = es esta remisión (QR o número
+/// leído por la IA) y, con la IA activa, tiene la firma del cliente. Motivo = por qué no, en español.
+/// </summary>
+public record VerificacionSoporteDto(
+    bool Valido,
+    string? Motivo,
+    bool QrCoincide,
+    bool IaActiva,
+    bool IaAnalizado,
+    string? IaNumeroLeido,
+    bool IaHayFirma,
+    bool IaHayNombreOCedula,
+    string? IaConfianza,
+    string? IaObservacion);
+

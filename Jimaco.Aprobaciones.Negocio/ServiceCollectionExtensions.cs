@@ -25,6 +25,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IConfiguracionCuentasPorPagarService, ConfiguracionCuentasPorPagarService>();
         services.AddScoped<IRemisionService, RemisionService>();
         services.AddSingleton<IRemisionPdfGenerador, RemisionPdfGenerador>();
+        services.AddSingleton<IVerificadorSoporteEntrega, VerificadorSoporteEntregaIA>();
+        services.AddMemoryCache();
         services.AddSingleton<IDocumentoPdfGenerador, DocumentoPdfGenerador>();
         return services;
     }

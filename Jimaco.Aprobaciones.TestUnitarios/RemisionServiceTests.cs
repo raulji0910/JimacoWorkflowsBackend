@@ -5,6 +5,7 @@ using Jimaco.Aprobaciones.Negocio.DTOs;
 using Jimaco.Aprobaciones.Negocio.Interfaces;
 using Jimaco.Aprobaciones.Negocio.Servicios;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Moq;
 using Xunit;
@@ -36,9 +37,23 @@ public class RemisionServiceTests
 
     private readonly Reloj reloj = new();
 
+    // IA apagada por defecto (solo QR); cada prueba de IA la enciende y define qué "ve".
+    private readonly Mock<IVerificadorSoporteEntrega> ia = new();
+    private readonly MemoryCache cache = new(new MemoryCacheOptions());
+
     private RemisionService Servicio() => new(db, almacenamiento.Object, new RemisionPdfGenerador(),
         Mock.Of<IConfiguration>(c => c["Entregas:HorasUmbralAlerta"] == "48"),
-        reloj);
+        reloj, ia.Object, cache);
+
+    private void IaVe(string? numero, bool firma, bool legible = true)
+    {
+        ia.SetupGet(x => x.Activo).Returns(true);
+        ia.Setup(x => x.VerificarAsync(It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResultadoVerificacionIA(true, numero, true, firma, firma, legible, "alta", "obs", null));
+    }
+
+    private static ArchivoSoporteEntrega Archivo(string nombre, string? qr, string contenido) =>
+        new(nombre, "image/jpeg", new MemoryStream(Encoding.UTF8.GetBytes(contenido)), contenido.Length, qr);
 
     private async Task<int> UsuarioAsync(string nombre, bool gestiona, bool ve)
     {
@@ -56,8 +71,9 @@ public class RemisionServiceTests
         "YAZMIN RENDON RODRIGUEZ", "YAZMIN RENDON", "Credito", "VALLE DEL CAUCA", "CARMELO II", "2017383", "16374", "REMISIÓN",
         Enumerable.Range(1, renglones).Select(i => new RenglonRemisionInputDto($"PJ-{i}", $"Ítem {i}", i, "Und.")).ToList());
 
-    private static ArchivoSoporteEntrega Archivo(string nombre, string? qr) =>
-        new(nombre, "image/jpeg", new MemoryStream(Encoding.UTF8.GetBytes("foto")), 4, qr);
+    private static ArchivoSoporteEntrega Archivo(string nombre, string? qr) => Archivo(nombre, qr, "foto-" + nombre);
+
+    private const string QrOk = "JIMACO-REM-29635";
 
     [Fact]
     public async Task Registrar_es_idempotente_y_respeta_fecha_de_inicio_y_renglones()
@@ -99,12 +115,12 @@ public class RemisionServiceTests
             Servicio().ConfirmarEntregaAsync(id, soloVe, null, [Archivo("f.jpg", null)]));
     }
 
+    // ---- Sin IA configurada: manda el QR ----
+
     [Theory]
-    [InlineData("JIMACO-REM-29635", "Coincide")]
-    [InlineData("  jimaco-rem-29635 ", "Coincide")]
-    [InlineData("JIMACO-REM-29640", "NoCoincide")]
-    [InlineData(null, "SinQR")]
-    public async Task Confirmar_entrega_guarda_soporte_y_verifica_el_QR(string? qr, string esperado)
+    [InlineData("JIMACO-REM-29635")]
+    [InlineData("  jimaco-rem-29635 ")]
+    public async Task Sin_IA_con_el_QR_correcto_queda_entregada(string qr)
     {
         var logistica = await UsuarioAsync("Logistica", true, false);
         await Servicio().RegistrarAsync([Rem(1, "29635")]);
@@ -113,26 +129,123 @@ public class RemisionServiceTests
         var detalle = await Servicio().ConfirmarEntregaAsync(id, logistica, "  Recibió Carmelo  ", [Archivo("firma.jpg", qr)]);
 
         Assert.Equal("Entregada", detalle.Estado);
-        Assert.Equal(esperado, detalle.VerificacionQR);
+        Assert.Equal("Coincide", detalle.VerificacionQR);
         Assert.Equal("Recibió Carmelo", detalle.ObservacionEntrega);
         Assert.Equal("Logistica", detalle.EntregadaPor);
-        Assert.Single(detalle.Soportes);
-        Assert.Equal("EntregaFirmada", detalle.Soportes[0].Tipo);
-        Assert.Equal("JIMACO-REM-29635", detalle.CodigoQR);
+        Assert.True(Assert.Single(detalle.Soportes).Valido);
+    }
+
+    [Theory]
+    [InlineData("JIMACO-REM-29640")]
+    [InlineData(null)]
+    public async Task Soporte_incorrecto_no_entrega_ni_guarda_nada(string? qr)
+    {
+        var logistica = await UsuarioAsync("Logistica", true, false);
+        await Servicio().RegistrarAsync([Rem(1, "29635")]);
+        var id = (await db.Remisiones.SingleAsync()).Id;
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            Servicio().ConfirmarEntregaAsync(id, logistica, null, [Archivo("f.jpg", qr)]));
+
+        Assert.Contains("29635", error.Message);
+        var rem = await db.Remisiones.Include(r => r.Soportes).SingleAsync();
+        Assert.Equal(EstadoRemision.PorEntregar, rem.Estado);
+        Assert.Empty(rem.Soportes);
+        almacenamiento.Verify(a => a.GuardarAsync(It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public async Task Basta_con_que_un_soporte_traiga_el_QR_correcto()
+    public async Task Basta_un_soporte_valido_y_se_guardan_todos_marcados()
     {
         var logistica = await UsuarioAsync("Logistica", true, false);
         await Servicio().RegistrarAsync([Rem(1, "29635")]);
         var id = (await db.Remisiones.SingleAsync()).Id;
 
         var detalle = await Servicio().ConfirmarEntregaAsync(id, logistica, null,
-            [Archivo("pagina1.jpg", null), Archivo("pagina2.jpg", "JIMACO-REM-29635")]);
+            [Archivo("pagina1.jpg", null), Archivo("pagina2.jpg", QrOk)]);
 
         Assert.Equal("Coincide", detalle.VerificacionQR);
-        Assert.Equal(2, detalle.Soportes.Count);
+        Assert.Equal([false, true], detalle.Soportes.Select(x => x.Valido));
+    }
+
+    // ---- Con IA: además del documento correcto, la firma del cliente ----
+
+    [Fact]
+    public async Task Con_IA_numero_y_firma_correctos_entrega_aunque_no_haya_QR()
+    {
+        IaVe("29635", firma: true);
+        var logistica = await UsuarioAsync("Logistica", true, false);
+        await Servicio().RegistrarAsync([Rem(1, "29635")]);
+        var id = (await db.Remisiones.SingleAsync()).Id;
+
+        var detalle = await Servicio().ConfirmarEntregaAsync(id, logistica, null, [Archivo("impresa-desde-WO.jpg", null)]);
+
+        Assert.Equal("Entregada", detalle.Estado);
+        var soporte = Assert.Single(detalle.Soportes);
+        Assert.True(soporte.IaHayFirma);
+        Assert.Equal("29635", soporte.IaNumeroLeido);
+    }
+
+    [Fact]
+    public async Task Con_IA_sin_firma_no_entrega_aunque_el_QR_sea_correcto()
+    {
+        IaVe("29635", firma: false);
+        var logistica = await UsuarioAsync("Logistica", true, false);
+        await Servicio().RegistrarAsync([Rem(1, "29635")]);
+        var id = (await db.Remisiones.SingleAsync()).Id;
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            Servicio().ConfirmarEntregaAsync(id, logistica, null, [Archivo("sin-firmar.jpg", QrOk)]));
+
+        Assert.Contains("firma", error.Message);
+        Assert.Equal(EstadoRemision.PorEntregar, (await db.Remisiones.SingleAsync()).Estado);
+    }
+
+    [Theory]
+    [InlineData("29640", null, "remisión 29640")]
+    [InlineData("29635", "JIMACO-REM-29640", "otra remisión")]
+    [InlineData(null, null, "No se reconoce")]
+    public async Task Con_IA_documento_de_otra_remision_no_entrega(string? numeroLeido, string? qr, string motivo)
+    {
+        IaVe(numeroLeido, firma: true);
+        var logistica = await UsuarioAsync("Logistica", true, false);
+        await Servicio().RegistrarAsync([Rem(1, "29635")]);
+        var id = (await db.Remisiones.SingleAsync()).Id;
+
+        var verif = await Servicio().VerificarSoporteAsync(id, logistica, Archivo("x.jpg", qr));
+        Assert.False(verif.Valido);
+        Assert.Contains(motivo, verif.Motivo);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            Servicio().ConfirmarEntregaAsync(id, logistica, null, [Archivo("x.jpg", qr)]));
+    }
+
+    [Fact]
+    public async Task Con_IA_que_falla_no_entrega_y_lo_explica()
+    {
+        ia.SetupGet(x => x.Activo).Returns(true);
+        ia.Setup(x => x.VerificarAsync(It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ResultadoVerificacionIA.NoAnalizado("No se pudo revisar con IA en este momento."));
+        var logistica = await UsuarioAsync("Logistica", true, false);
+        await Servicio().RegistrarAsync([Rem(1, "29635")]);
+        var id = (await db.Remisiones.SingleAsync()).Id;
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            Servicio().ConfirmarEntregaAsync(id, logistica, null, [Archivo("f.jpg", QrOk)]));
+        Assert.Contains("No se pudo revisar con IA", error.Message);
+    }
+
+    [Fact]
+    public async Task Verificar_y_luego_confirmar_el_mismo_archivo_llama_a_la_IA_una_sola_vez()
+    {
+        IaVe("29635", firma: true);
+        var logistica = await UsuarioAsync("Logistica", true, false);
+        await Servicio().RegistrarAsync([Rem(1, "29635")]);
+        var id = (await db.Remisiones.SingleAsync()).Id;
+
+        Assert.True((await Servicio().VerificarSoporteAsync(id, logistica, Archivo("f.jpg", QrOk))).Valido);
+        await Servicio().ConfirmarEntregaAsync(id, logistica, null, [Archivo("f.jpg", QrOk)]);
+
+        ia.Verify(x => x.VerificarAsync(It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -143,8 +256,8 @@ public class RemisionServiceTests
         var id = (await db.Remisiones.SingleAsync()).Id;
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => Servicio().ConfirmarEntregaAsync(id, logistica, null, []));
-        await Servicio().ConfirmarEntregaAsync(id, logistica, null, [Archivo("f.jpg", null)]);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => Servicio().ConfirmarEntregaAsync(id, logistica, null, [Archivo("g.jpg", null)]));
+        await Servicio().ConfirmarEntregaAsync(id, logistica, null, [Archivo("f.jpg", QrOk)]);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Servicio().ConfirmarEntregaAsync(id, logistica, null, [Archivo("g.jpg", QrOk)]));
     }
 
     [Fact]
@@ -154,13 +267,12 @@ public class RemisionServiceTests
         await Servicio().RegistrarAsync([Rem(1, "29635"), Rem(2, "29636"), Rem(3, "29637"), Rem(4, "29638")]);
         var ids = await db.Remisiones.OrderBy(r => r.Numero).Select(r => r.Id).ToListAsync();
         await Servicio().ConfirmarEntregaAsync(ids[0], logistica, null, [Archivo("a.jpg", "JIMACO-REM-29635")]);
-        await Servicio().ConfirmarEntregaAsync(ids[1], logistica, null, [Archivo("b.jpg", null)]);
         await Servicio().MarcarAnuladasAsync([4]);
 
         var recien = await Servicio().ListarAsync(logistica);
         Assert.Equal(["29635", "29636", "29637"], recien.Select(r => r.Numero).Order());
         Assert.All(recien, r => Assert.False(r.EnAlerta));
-        Assert.Equal("SinQR", recien.Single(r => r.Numero == "29636").VerificacionQR);
+        Assert.Equal("Coincide", recien.Single(r => r.Numero == "29635").VerificacionQR);
 
         // 49 h después: la por entregar pasa a atrasada; las entregadas nunca.
         reloj.Ahora = reloj.Ahora.AddHours(49);
@@ -170,7 +282,7 @@ public class RemisionServiceTests
 
         // Pasados 60 días, las entregadas ya no se traen (la por entregar sí).
         reloj.Ahora = reloj.Ahora.AddDays(61);
-        Assert.Equal(["29637"], (await Servicio().ListarAsync(logistica)).Select(r => r.Numero));
+        Assert.Equal(["29636", "29637"], (await Servicio().ListarAsync(logistica)).Select(r => r.Numero).Order());
     }
 
     [Fact]
@@ -179,7 +291,7 @@ public class RemisionServiceTests
         var logistica = await UsuarioAsync("Logistica", true, false);
         await Servicio().RegistrarAsync([Rem(1, "29635")]);
         var id = (await db.Remisiones.SingleAsync()).Id;
-        await Servicio().ConfirmarEntregaAsync(id, logistica, null, [Archivo("a.jpg", null)]);
+        await Servicio().ConfirmarEntregaAsync(id, logistica, null, [Archivo("a.jpg", QrOk)]);
 
         await Servicio().MarcarAnuladasAsync([1]);
 

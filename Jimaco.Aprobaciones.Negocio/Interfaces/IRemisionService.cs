@@ -30,7 +30,16 @@ public interface IRemisionService
     /// <summary>PDF de una o varias remisiones (una por página), con el QR de cada una.</summary>
     Task<byte[]> GenerarPdfAsync(IReadOnlyList<int> ids, int usuarioId, CancellationToken ct = default);
 
-    /// <summary>Exige PuedeGestionarEntregas, al menos un archivo y que la remisión esté por entregar.</summary>
+    /// <summary>
+    /// Revisa un archivo ANTES de confirmar (para mostrarle al operario si sirve). El resultado queda
+    /// en memoria unos minutos para que confirmar no vuelva a llamar a la IA con el mismo archivo.
+    /// </summary>
+    Task<VerificacionSoporteDto> VerificarSoporteAsync(int id, int usuarioId, ArchivoSoporteEntrega archivo, CancellationToken ct = default);
+
+    /// <summary>
+    /// Exige PuedeGestionarEntregas y que AL MENOS UN archivo sea válido (esta remisión + firma del
+    /// cliente). Si ninguno lo es, no guarda nada y la remisión sigue por entregar.
+    /// </summary>
     Task<RemisionDetalleDto> ConfirmarEntregaAsync(int id, int usuarioId, string? observacion, IReadOnlyList<ArchivoSoporteEntrega> archivos, CancellationToken ct = default);
 
     Task<(Stream Contenido, string NombreArchivo, string? ContentType)> DescargarSoporteAsync(int soporteId, int usuarioId, CancellationToken ct = default);

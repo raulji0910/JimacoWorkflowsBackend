@@ -64,6 +64,18 @@ public class RemisionesController(IRemisionService remisionService) : Controller
         }
     }
 
+    /// <summary>Revisa un archivo antes de confirmar (QR + IA) — no guarda nada.</summary>
+    [HttpPost("{id:int}/verificar-soporte")]
+    [RequestSizeLimit(25_000_000)]
+    public async Task<ActionResult<VerificacionSoporteDto>> VerificarSoporte(int id, [FromForm] IFormFile archivo,
+        [FromForm] string? qrLeido, CancellationToken ct)
+    {
+        await using var contenido = archivo.OpenReadStream();
+        return Ok(await remisionService.VerificarSoporteAsync(id, UsuarioActualId,
+            new ArchivoSoporteEntrega(archivo.FileName, archivo.ContentType, contenido, archivo.Length,
+                string.IsNullOrWhiteSpace(qrLeido) ? null : qrLeido), ct));
+    }
+
     [HttpGet("soportes/{soporteId:int}")]
     public async Task<IActionResult> DescargarSoporte(int soporteId, CancellationToken ct)
     {

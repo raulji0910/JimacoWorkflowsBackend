@@ -1,21 +1,23 @@
+using System.Security.Cryptography;
 using Jimaco.Aprobaciones.Modelo;
 using Jimaco.Aprobaciones.Modelo.Entidades;
 using Jimaco.Aprobaciones.Negocio.DTOs;
 using Jimaco.Aprobaciones.Negocio.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 
 namespace Jimaco.Aprobaciones.Negocio.Servicios;
 
 /// <inheritdoc cref="IRemisionService"/>
 public class RemisionService(AppDbContext db, IAlmacenamientoArchivos almacenamiento, IRemisionPdfGenerador pdfGenerador,
-    IConfiguration configuration, TimeProvider reloj) : IRemisionService
+    IConfiguration configuration, TimeProvider reloj, IVerificadorSoporteEntrega verificadorIA, IMemoryCache cache) : IRemisionService
 {
     private const int MaxRemisionesPorPdf = 50;
 
     /// <summary>Horas por entregar desde que llegó para pasar a "Atrasada" (alerta roja y sonido).</summary>
     private double HorasUmbralAlerta =>
-        double.TryParse(configuration["Entregas:HorasUmbralAlerta"], out var h) ? h : 48;
+        double.TryParse(configuration["Entregas:HorasUmbralAlerta"], out var h) ? h : 24;
 
     private int DiasEntregadasVisibles =>
         int.TryParse(configuration["Entregas:DiasEntregadasVisibles"], out var d) ? d : 60;
@@ -154,6 +156,15 @@ public class RemisionService(AppDbContext db, IAlmacenamientoArchivos almacenami
         return pdfGenerador.Generar(remisiones.OrderBy(r => orden[r.Id]).Select(r => ADetalle(r, puedeGestionar)).ToList());
     }
 
+    public async Task<VerificacionSoporteDto> VerificarSoporteAsync(int id, int usuarioId, ArchivoSoporteEntrega archivo, CancellationToken ct = default)
+    {
+        await ExigirGestionarAsync(usuarioId, ct);
+        var remision = await db.Remisiones.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id, ct)
+            ?? throw new KeyNotFoundException("Remisión no encontrada.");
+        var bytes = await LeerAsync(archivo.Contenido, ct);
+        return await EvaluarAsync(remision, bytes, archivo, ct);
+    }
+
     public async Task<RemisionDetalleDto> ConfirmarEntregaAsync(int id, int usuarioId, string? observacion,
         IReadOnlyList<ArchivoSoporteEntrega> archivos, CancellationToken ct = default)
     {
@@ -167,17 +178,38 @@ public class RemisionService(AppDbContext db, IAlmacenamientoArchivos almacenami
         if (remision.Estado == EstadoRemision.Anulada)
             throw new InvalidOperationException($"La remisión {remision.Numero} se anuló en World Office.");
 
+        // Primero se revisan TODOS (sin guardar nada): la entrega solo se confirma si al menos un
+        // archivo es esta remisión y trae la firma del cliente (pedido del usuario 2026-11-12).
+        var revisados = new List<(ArchivoSoporteEntrega Archivo, byte[] Bytes, VerificacionSoporteDto Resultado)>();
         foreach (var a in archivos)
         {
-            var ruta = await almacenamiento.GuardarAsync($"remision-{remision.Numero}-{a.NombreArchivo}", a.Contenido, ct);
+            var bytes = await LeerAsync(a.Contenido, ct);
+            revisados.Add((a, bytes, await EvaluarAsync(remision, bytes, a, ct)));
+        }
+
+        if (!revisados.Any(r => r.Resultado.Valido))
+        {
+            var motivos = revisados.Select(r => $"{r.Archivo.NombreArchivo}: {r.Resultado.Motivo}");
+            throw new InvalidOperationException(
+                $"No se confirmó la entrega de la REM {remision.Numero}: ningún soporte es válido. " + string.Join(" · ", motivos));
+        }
+
+        foreach (var (a, bytes, resultado) in revisados)
+        {
+            using var copia = new MemoryStream(bytes, writable: false);
+            var ruta = await almacenamiento.GuardarAsync($"remision-{remision.Numero}-{a.NombreArchivo}", copia, ct);
             remision.Soportes.Add(new SoporteRemision
             {
                 Tipo = TipoSoporteRemision.EntregaFirmada,
                 NombreArchivo = Recortar(a.NombreArchivo, 300) ?? "soporte",
                 RutaArchivo = ruta,
                 ContentType = Recortar(a.ContentType, 150),
-                TamanoBytes = a.TamanoBytes,
+                TamanoBytes = bytes.LongLength,
                 QrLeido = Recortar(a.QrLeido?.Trim(), 200),
+                IaNumeroLeido = resultado.IaAnalizado ? Recortar(resultado.IaNumeroLeido, 30) : null,
+                IaHayFirma = resultado.IaAnalizado ? resultado.IaHayFirma : null,
+                IaObservacion = resultado.IaAnalizado ? Recortar(resultado.IaObservacion, 500) : null,
+                Valido = resultado.Valido,
                 SubidoPorUsuarioId = usuarioId
             });
         }
@@ -186,23 +218,64 @@ public class RemisionService(AppDbContext db, IAlmacenamientoArchivos almacenami
         remision.FechaEntrega = DateTime.UtcNow;
         remision.EntregadaPorUsuarioId = usuarioId;
         remision.ObservacionEntrega = Recortar(observacion?.Trim(), 1000);
-        remision.VerificacionQR = Verificar(remision);
+        remision.VerificacionQR = revisados.Any(r => r.Resultado.QrCoincide) ? VerificacionQRSoporte.Coincide : VerificacionQRSoporte.SinQR;
         await db.SaveChangesAsync(ct);
 
         return await ObtenerAsync(id, usuarioId, ct);
     }
 
     /// <summary>
-    /// Coincide si ALGÚN soporte trae el QR de esta remisión; NoCoincide si se leyó un QR pero de
-    /// otra; SinQR si no se leyó ninguno.
+    /// La regla de un archivo válido: (1) es ESTA remisión — el QR coincide, o la IA lee este número
+    /// (un QR de OTRA remisión lo descarta siempre); y (2) con la IA activa, se ve la firma del
+    /// cliente. Sin IA configurada se exige el QR. El resultado de la IA se guarda en memoria por
+    /// archivo (hash) para no pagar dos veces la misma revisión (verificar y luego confirmar).
     /// </summary>
-    internal static VerificacionQRSoporte Verificar(Remision r)
+    private async Task<VerificacionSoporteDto> EvaluarAsync(Remision remision, byte[] bytes, ArchivoSoporteEntrega archivo, CancellationToken ct)
     {
-        var esperado = Normalizar(CodigoQR(r));
-        var leidos = r.Soportes.Where(s => s.Tipo == TipoSoporteRemision.EntregaFirmada && !string.IsNullOrWhiteSpace(s.QrLeido))
-            .Select(s => Normalizar(s.QrLeido)).ToList();
-        if (leidos.Count == 0) return VerificacionQRSoporte.SinQR;
-        return leidos.Contains(esperado) ? VerificacionQRSoporte.Coincide : VerificacionQRSoporte.NoCoincide;
+        var qr = Normalizar(archivo.QrLeido);
+        var qrCoincide = qr.Length > 0 && qr == Normalizar(CodigoQR(remision));
+        var qrDeOtra = qr.Length > 0 && !qrCoincide;
+
+        if (!verificadorIA.Activo)
+        {
+            return new VerificacionSoporteDto(qrCoincide,
+                qrCoincide ? null : qrDeOtra
+                    ? $"El código QR es de otra remisión ({archivo.QrLeido})."
+                    : "No se pudo leer el código QR de esta remisión. Tomá la foto de la hoja completa, nítida y con el QR visible.",
+                qrCoincide, false, false, null, false, false, null, null);
+        }
+
+        var clave = $"verif-soporte:{remision.Id}:{Convert.ToHexString(SHA256.HashData(bytes))}";
+        if (!cache.TryGetValue(clave, out ResultadoVerificacionIA? ia) || ia is null)
+        {
+            ia = await verificadorIA.VerificarAsync(bytes, archivo.ContentType, ct);
+            if (ia.Analizado)
+                cache.Set(clave, ia, TimeSpan.FromMinutes(30));
+        }
+
+        string? motivo = null;
+        if (qrDeOtra)
+            motivo = $"El código QR es de otra remisión ({archivo.QrLeido}).";
+        else if (!ia.Analizado)
+            motivo = ia.Error;
+        else if (!ia.Legible)
+            motivo = "La imagen no se puede revisar (borrosa, oscura o cortada). Tomá otra foto.";
+        else if (!qrCoincide && ia.NumeroLeido != remision.Numero)
+            motivo = ia.NumeroLeido is null
+                ? "No se reconoce el número de esta remisión en el documento."
+                : $"El documento es la remisión {ia.NumeroLeido}, no la {remision.Numero}.";
+        else if (!ia.HayFirma)
+            motivo = "No se ve la firma del cliente en la remisión.";
+
+        return new VerificacionSoporteDto(motivo is null, motivo, qrCoincide, true, ia.Analizado,
+            ia.NumeroLeido, ia.HayFirma, ia.HayNombreOCedula, ia.Analizado ? ia.Confianza : null, ia.Observacion);
+    }
+
+    private static async Task<byte[]> LeerAsync(Stream contenido, CancellationToken ct)
+    {
+        using var memoria = new MemoryStream();
+        await contenido.CopyToAsync(memoria, ct);
+        return memoria.ToArray();
     }
 
     public async Task<(Stream Contenido, string NombreArchivo, string? ContentType)> DescargarSoporteAsync(int soporteId, int usuarioId, CancellationToken ct = default)
@@ -265,7 +338,7 @@ public class RemisionService(AppDbContext db, IAlmacenamientoArchivos almacenami
         r.Renglones.OrderBy(x => x.Orden).Select(x => new RenglonRemisionDto(x.Orden, x.Codigo, x.Descripcion, x.Cantidad, x.UnidadMedida)).ToList(),
         r.Soportes.OrderBy(s => s.FechaCarga).Select(s => new SoporteRemisionDto(
             s.Id, s.Tipo.ToString(), s.NombreArchivo, s.ContentType, s.TamanoBytes, s.QrLeido,
-            s.SubidoPorUsuario?.Nombre ?? "", s.FechaCarga)).ToList(),
+            s.SubidoPorUsuario?.Nombre ?? "", s.FechaCarga, s.Valido, s.IaNumeroLeido, s.IaHayFirma, s.IaObservacion)).ToList(),
         puedeGestionar);
 
     private static string? Recortar(string? s, int max) =>

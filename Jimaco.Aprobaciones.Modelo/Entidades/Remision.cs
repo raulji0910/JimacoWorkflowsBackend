@@ -126,6 +126,15 @@ public class SoporteRemision
     /// <summary>Texto del QR que leyó el navegador en este archivo (null = no se leyó ninguno).</summary>
     [MaxLength(200)] public string? QrLeido { get; set; }
 
+    // Revisión con IA (2026-11-12): qué número de remisión leyó, si vio la firma del cliente y su
+    // comentario. Null en los campos = no se revisó con IA (no estaba configurada).
+    [MaxLength(30)] public string? IaNumeroLeido { get; set; }
+    public bool? IaHayFirma { get; set; }
+    [MaxLength(500)] public string? IaObservacion { get; set; }
+
+    /// <summary>Este archivo cumplió la regla (es esta remisión y tiene la firma del cliente).</summary>
+    public bool Valido { get; set; }
+
     public int SubidoPorUsuarioId { get; set; }
     public Usuario SubidoPorUsuario { get; set; } = null!;
     public DateTime FechaCarga { get; set; } = DateTime.UtcNow;
