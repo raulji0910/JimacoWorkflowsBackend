@@ -43,6 +43,10 @@ public interface IRemisionService
     Task<RemisionDetalleDto> ConfirmarEntregaAsync(int id, int usuarioId, string? observacion, IReadOnlyList<ArchivoSoporteEntrega> archivos, CancellationToken ct = default);
 
     Task<(Stream Contenido, string NombreArchivo, string? ContentType)> DescargarSoporteAsync(int soporteId, int usuarioId, CancellationToken ct = default);
+
+    // ---- Administración (solo Admin, lo controla el controlador) ----
+    Task<ConfiguracionEntregasDto> ObtenerConfiguracionAsync(CancellationToken ct = default);
+    Task<ConfiguracionEntregasDto> ActualizarConfiguracionAsync(ActualizarConfiguracionEntregasDto dto, int usuarioId, CancellationToken ct = default);
 }
 
 public interface IRemisionPdfGenerador

@@ -237,7 +237,7 @@ public class RemisionService(AppDbContext db, IAlmacenamientoArchivos almacenami
         var qrCoincide = qr.Length > 0 && qr == Normalizar(CodigoQR(remision));
         var qrDeOtra = qr.Length > 0 && !qrCoincide;
 
-        if (!verificadorIA.Activo)
+        if (!await IaEncendidaAsync(ct))
         {
             return new VerificacionSoporteDto(qrCoincide,
                 qrCoincide ? null : qrDeOtra
@@ -287,6 +287,44 @@ public class RemisionService(AppDbContext db, IAlmacenamientoArchivos almacenami
         var contenido = await almacenamiento.AbrirAsync(soporte.RutaArchivo, ct);
         return (contenido, soporte.NombreArchivo, soporte.ContentType);
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // Administración
+    // ---------------------------------------------------------------------------------------------
+
+    public async Task<ConfiguracionEntregasDto> ObtenerConfiguracionAsync(CancellationToken ct = default) =>
+        ConfigADto(await CargarConfiguracionAsync(ct));
+
+    public async Task<ConfiguracionEntregasDto> ActualizarConfiguracionAsync(ActualizarConfiguracionEntregasDto dto, int usuarioId, CancellationToken ct = default)
+    {
+        var config = await CargarConfiguracionAsync(ct);
+        config.VerificacionIAActiva = dto.VerificacionIAActiva;
+        config.FechaActualizacion = DateTime.UtcNow;
+        config.ActualizadoPorUsuarioId = usuarioId;
+        await db.SaveChangesAsync(ct);
+        await db.Entry(config).Reference(c => c.ActualizadoPorUsuario).LoadAsync(ct);
+        return ConfigADto(config);
+    }
+
+    private async Task<ConfiguracionEntregas> CargarConfiguracionAsync(CancellationToken ct)
+    {
+        var config = await db.ConfiguracionesEntregas.Include(c => c.ActualizadoPorUsuario)
+            .FirstOrDefaultAsync(c => c.Id == ConfiguracionEntregas.IdUnico, ct);
+        if (config is not null) return config;
+        // La fila la crea la migración; esto solo cubre una base sin ella.
+        config = new ConfiguracionEntregas { Id = ConfiguracionEntregas.IdUnico, FechaInicio = DateTime.Today };
+        db.ConfiguracionesEntregas.Add(config);
+        await db.SaveChangesAsync(ct);
+        return config;
+    }
+
+    private ConfiguracionEntregasDto ConfigADto(ConfiguracionEntregas c) =>
+        new(c.VerificacionIAActiva, verificadorIA.Activo, c.FechaInicio, c.FechaActualizacion, c.ActualizadoPorUsuario?.Nombre);
+
+    /// <summary>La IA revisa solo si el administrador la encendió Y el servidor tiene la clave.</summary>
+    private async Task<bool> IaEncendidaAsync(CancellationToken ct) =>
+        verificadorIA.Activo && await db.ConfiguracionesEntregas.AsNoTracking()
+            .AnyAsync(c => c.Id == ConfiguracionEntregas.IdUnico && c.VerificacionIAActiva, ct);
 
     // ---------------------------------------------------------------------------------------------
 

@@ -343,10 +343,21 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Property<int>("Id")
                         .HasColumnType("int");
 
+                    b.Property<int?>("ActualizadoPorUsuarioId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("FechaActualizacion")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime>("FechaInicio")
                         .HasColumnType("datetime2");
 
+                    b.Property<bool>("VerificacionIAActiva")
+                        .HasColumnType("bit");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("ActualizadoPorUsuarioId");
 
                     b.ToTable("ConfiguracionesEntregas");
                 });
@@ -2574,6 +2585,16 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                 });
 
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.ConfiguracionCuentasPorPagar", b =>
+                {
+                    b.HasOne("Jimaco.Aprobaciones.Modelo.Entidades.Usuario", "ActualizadoPorUsuario")
+                        .WithMany()
+                        .HasForeignKey("ActualizadoPorUsuarioId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.Navigation("ActualizadoPorUsuario");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.ConfiguracionEntregas", b =>
                 {
                     b.HasOne("Jimaco.Aprobaciones.Modelo.Entidades.Usuario", "ActualizadoPorUsuario")
                         .WithMany()

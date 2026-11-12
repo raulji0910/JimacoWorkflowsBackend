@@ -338,7 +338,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 .OnDelete(DeleteBehavior.NoAction);
         });
 
-        modelBuilder.Entity<ConfiguracionEntregas>(e => e.Property(c => c.Id).ValueGeneratedNever());
+        modelBuilder.Entity<ConfiguracionEntregas>(e =>
+        {
+            e.Property(c => c.Id).ValueGeneratedNever();
+            e.Property(c => c.FechaActualizacion).HasConversion(ConversorFechaUtcNullable);
+            e.HasOne(c => c.ActualizadoPorUsuario).WithMany().HasForeignKey(c => c.ActualizadoPorUsuarioId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
 
         modelBuilder.Entity<ConfiguracionCuentasPorPagar>(e =>
         {

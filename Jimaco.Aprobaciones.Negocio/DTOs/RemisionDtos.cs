@@ -58,6 +58,15 @@ public record RemisionTableroDto(
     string? EntregadaPor,
     string? VerificacionQR);
 
+/// <summary>
+/// Configuración de Entregas para el administrador. <c>IaConClave</c> = el servidor tiene la clave de
+/// Anthropic (si no, encender el interruptor no hace nada hasta que se configure).
+/// </summary>
+public record ConfiguracionEntregasDto(bool VerificacionIAActiva, bool IaConClave, DateTime FechaInicio,
+    DateTime? FechaActualizacion, string? ActualizadoPor);
+
+public record ActualizarConfiguracionEntregasDto(bool VerificacionIAActiva);
+
 public record RenglonRemisionDto(int Orden, string? Codigo, string Descripcion, decimal Cantidad, string? UnidadMedida);
 
 public record SoporteRemisionDto(

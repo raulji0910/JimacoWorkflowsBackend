@@ -15,6 +15,18 @@ public class RemisionesController(IRemisionService remisionService) : Controller
 {
     private int UsuarioActualId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
+    // ---- Configuración (2026-11-12): interruptor de la revisión con IA — solo administradores. ----
+
+    [HttpGet("configuracion")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<ConfiguracionEntregasDto>> Configuracion(CancellationToken ct) =>
+        Ok(await remisionService.ObtenerConfiguracionAsync(ct));
+
+    [HttpPut("configuracion")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<ConfiguracionEntregasDto>> ActualizarConfiguracion(ActualizarConfiguracionEntregasDto dto, CancellationToken ct) =>
+        Ok(await remisionService.ActualizarConfiguracionAsync(dto, UsuarioActualId, ct));
+
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<RemisionTableroDto>>> Listar(CancellationToken ct) =>
         Ok(await remisionService.ListarAsync(UsuarioActualId, ct));

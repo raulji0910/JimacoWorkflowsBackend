@@ -152,4 +152,16 @@ public class ConfiguracionEntregas
     public const int IdUnico = 1;
     public int Id { get; set; }
     public DateTime FechaInicio { get; set; }
+
+    /// <summary>
+    /// Interruptor de la revisión con IA (firma/sello) que maneja un administrador desde la página
+    /// (2026-11-12, pedido del usuario: "dejarlo apagado por un momento, administrado por el
+    /// administrador"). Arranca APAGADO. Apagado = solo se exige el QR. Encendido solo tiene efecto
+    /// si además el servidor tiene la clave de Anthropic.
+    /// </summary>
+    public bool VerificacionIAActiva { get; set; }
+
+    public DateTime? FechaActualizacion { get; set; }
+    public int? ActualizadoPorUsuarioId { get; set; }
+    public Usuario? ActualizadoPorUsuario { get; set; }
 }

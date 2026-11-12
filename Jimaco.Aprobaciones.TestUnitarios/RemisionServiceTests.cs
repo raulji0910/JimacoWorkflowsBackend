@@ -45,8 +45,16 @@ public class RemisionServiceTests
         Mock.Of<IConfiguration>(c => c["Entregas:HorasUmbralAlerta"] == "48"),
         reloj, ia.Object, cache);
 
-    private void IaVe(string? numero, bool firma, bool legible = true, bool sello = false)
+    /// <summary>Lo que hace el administrador en la página: encender la revisión con IA.</summary>
+    private void EncenderIA()
     {
+        db.ConfiguracionesEntregas.Single().VerificacionIAActiva = true;
+        db.SaveChanges();
+    }
+
+    private void IaVe(string? numero, bool firma, bool legible = true, bool sello = false, bool encendida = true)
+    {
+        if (encendida) EncenderIA();
         ia.SetupGet(x => x.Activo).Returns(true);
         ia.Setup(x => x.VerificarAsync(It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ResultadoVerificacionIA(true, numero, true, firma, firma, legible, "alta", "obs", null, sello));
@@ -240,6 +248,7 @@ public class RemisionServiceTests
     [Fact]
     public async Task Con_IA_que_falla_no_entrega_y_lo_explica()
     {
+        EncenderIA();
         ia.SetupGet(x => x.Activo).Returns(true);
         ia.Setup(x => x.VerificarAsync(It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(ResultadoVerificacionIA.NoAnalizado("No se pudo revisar con IA en este momento."));
@@ -250,6 +259,35 @@ public class RemisionServiceTests
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             Servicio().ConfirmarEntregaAsync(id, logistica, null, [Archivo("f.jpg", QrOk)]));
         Assert.Contains("No se pudo revisar con IA", error.Message);
+    }
+
+    [Fact]
+    public async Task Con_clave_pero_apagada_por_el_administrador_solo_exige_el_QR_y_no_llama_a_la_IA()
+    {
+        IaVe("29635", firma: false, encendida: false);
+        var logistica = await UsuarioAsync("Logistica", true, false);
+        await Servicio().RegistrarAsync([Rem(1, "29635")]);
+        var id = (await db.Remisiones.SingleAsync()).Id;
+
+        var detalle = await Servicio().ConfirmarEntregaAsync(id, logistica, null, [Archivo("f.jpg", QrOk)]);
+
+        Assert.Equal("Entregada", detalle.Estado);
+        ia.Verify(x => x.VerificarAsync(It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task El_administrador_enciende_y_apaga_la_IA()
+    {
+        var admin = await UsuarioAsync("Admin", false, false);
+        ia.SetupGet(x => x.Activo).Returns(false);
+
+        Assert.False((await Servicio().ObtenerConfiguracionAsync()).VerificacionIAActiva);
+        var encendida = await Servicio().ActualizarConfiguracionAsync(new(true), admin);
+
+        Assert.True(encendida.VerificacionIAActiva);
+        Assert.False(encendida.IaConClave);
+        Assert.Equal("Admin", encendida.ActualizadoPor);
+        Assert.False((await Servicio().ActualizarConfiguracionAsync(new(false), admin)).VerificacionIAActiva);
     }
 
     [Fact]
