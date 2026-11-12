@@ -130,9 +130,11 @@ public class SoporteRemision
     // comentario. Null en los campos = no se revisó con IA (no estaba configurada).
     [MaxLength(30)] public string? IaNumeroLeido { get; set; }
     public bool? IaHayFirma { get; set; }
+    /// <summary>La IA vio el sello del cliente (vale igual que la firma).</summary>
+    public bool? IaHaySello { get; set; }
     [MaxLength(500)] public string? IaObservacion { get; set; }
 
-    /// <summary>Este archivo cumplió la regla (es esta remisión y tiene la firma del cliente).</summary>
+    /// <summary>Este archivo cumplió la regla (es esta remisión y tiene la firma o el sello del cliente).</summary>
     public bool Valido { get; set; }
 
     public int SubidoPorUsuarioId { get; set; }

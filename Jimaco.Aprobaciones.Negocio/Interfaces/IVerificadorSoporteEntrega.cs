@@ -18,8 +18,13 @@ public record ResultadoVerificacionIA(
     bool Legible,
     string Confianza,
     string? Observacion,
-    string? Error)
+    string? Error,
+    /// <summary>Sello del cliente (de su empresa) — vale igual que la firma (pedido 2026-11-12).</summary>
+    bool HaySello = false)
 {
+    /// <summary>La hoja trae la firma o el sello del cliente: cualquiera de los dos sirve.</summary>
+    public bool HayFirmaOSello => HayFirma || HaySello;
+
     public static ResultadoVerificacionIA NoAnalizado(string error) =>
         new(false, null, false, false, false, false, "baja", null, error);
 }

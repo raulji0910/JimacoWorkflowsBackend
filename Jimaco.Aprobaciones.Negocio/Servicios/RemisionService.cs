@@ -179,7 +179,7 @@ public class RemisionService(AppDbContext db, IAlmacenamientoArchivos almacenami
             throw new InvalidOperationException($"La remisión {remision.Numero} se anuló en World Office.");
 
         // Primero se revisan TODOS (sin guardar nada): la entrega solo se confirma si al menos un
-        // archivo es esta remisión y trae la firma del cliente (pedido del usuario 2026-11-12).
+        // archivo es esta remisión y trae la firma o el sello del cliente (pedido del usuario 2026-11-12).
         var revisados = new List<(ArchivoSoporteEntrega Archivo, byte[] Bytes, VerificacionSoporteDto Resultado)>();
         foreach (var a in archivos)
         {
@@ -208,6 +208,7 @@ public class RemisionService(AppDbContext db, IAlmacenamientoArchivos almacenami
                 QrLeido = Recortar(a.QrLeido?.Trim(), 200),
                 IaNumeroLeido = resultado.IaAnalizado ? Recortar(resultado.IaNumeroLeido, 30) : null,
                 IaHayFirma = resultado.IaAnalizado ? resultado.IaHayFirma : null,
+                IaHaySello = resultado.IaAnalizado ? resultado.IaHaySello : null,
                 IaObservacion = resultado.IaAnalizado ? Recortar(resultado.IaObservacion, 500) : null,
                 Valido = resultado.Valido,
                 SubidoPorUsuarioId = usuarioId
@@ -226,8 +227,8 @@ public class RemisionService(AppDbContext db, IAlmacenamientoArchivos almacenami
 
     /// <summary>
     /// La regla de un archivo válido: (1) es ESTA remisión — el QR coincide, o la IA lee este número
-    /// (un QR de OTRA remisión lo descarta siempre); y (2) con la IA activa, se ve la firma del
-    /// cliente. Sin IA configurada se exige el QR. El resultado de la IA se guarda en memoria por
+    /// (un QR de OTRA remisión lo descarta siempre); y (2) con la IA activa, se ve la firma o el
+    /// sello del cliente (muchos clientes firman y sellan; solo el sello también vale). Sin IA configurada se exige el QR. El resultado de la IA se guarda en memoria por
     /// archivo (hash) para no pagar dos veces la misma revisión (verificar y luego confirmar).
     /// </summary>
     private async Task<VerificacionSoporteDto> EvaluarAsync(Remision remision, byte[] bytes, ArchivoSoporteEntrega archivo, CancellationToken ct)
@@ -264,11 +265,11 @@ public class RemisionService(AppDbContext db, IAlmacenamientoArchivos almacenami
             motivo = ia.NumeroLeido is null
                 ? "No se reconoce el número de esta remisión en el documento."
                 : $"El documento es la remisión {ia.NumeroLeido}, no la {remision.Numero}.";
-        else if (!ia.HayFirma)
-            motivo = "No se ve la firma del cliente en la remisión.";
+        else if (!ia.HayFirmaOSello)
+            motivo = "No se ve la firma ni el sello del cliente en la remisión.";
 
         return new VerificacionSoporteDto(motivo is null, motivo, qrCoincide, true, ia.Analizado,
-            ia.NumeroLeido, ia.HayFirma, ia.HayNombreOCedula, ia.Analizado ? ia.Confianza : null, ia.Observacion);
+            ia.NumeroLeido, ia.HayFirma, ia.HayNombreOCedula, ia.Analizado ? ia.Confianza : null, ia.Observacion, ia.HaySello);
     }
 
     private static async Task<byte[]> LeerAsync(Stream contenido, CancellationToken ct)
@@ -338,7 +339,7 @@ public class RemisionService(AppDbContext db, IAlmacenamientoArchivos almacenami
         r.Renglones.OrderBy(x => x.Orden).Select(x => new RenglonRemisionDto(x.Orden, x.Codigo, x.Descripcion, x.Cantidad, x.UnidadMedida)).ToList(),
         r.Soportes.OrderBy(s => s.FechaCarga).Select(s => new SoporteRemisionDto(
             s.Id, s.Tipo.ToString(), s.NombreArchivo, s.ContentType, s.TamanoBytes, s.QrLeido,
-            s.SubidoPorUsuario?.Nombre ?? "", s.FechaCarga, s.Valido, s.IaNumeroLeido, s.IaHayFirma, s.IaObservacion)).ToList(),
+            s.SubidoPorUsuario?.Nombre ?? "", s.FechaCarga, s.Valido, s.IaNumeroLeido, s.IaHayFirma, s.IaObservacion, s.IaHaySello)).ToList(),
         puedeGestionar);
 
     private static string? Recortar(string? s, int max) =>

@@ -1537,6 +1537,9 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Property<bool?>("IaHayFirma")
                         .HasColumnType("bit");
 
+                    b.Property<bool?>("IaHaySello")
+                        .HasColumnType("bit");
+
                     b.Property<string>("IaNumeroLeido")
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");

@@ -45,11 +45,11 @@ public class RemisionServiceTests
         Mock.Of<IConfiguration>(c => c["Entregas:HorasUmbralAlerta"] == "48"),
         reloj, ia.Object, cache);
 
-    private void IaVe(string? numero, bool firma, bool legible = true)
+    private void IaVe(string? numero, bool firma, bool legible = true, bool sello = false)
     {
         ia.SetupGet(x => x.Activo).Returns(true);
         ia.Setup(x => x.VerificarAsync(It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ResultadoVerificacionIA(true, numero, true, firma, firma, legible, "alta", "obs", null));
+            .ReturnsAsync(new ResultadoVerificacionIA(true, numero, true, firma, firma, legible, "alta", "obs", null, sello));
     }
 
     private static ArchivoSoporteEntrega Archivo(string nombre, string? qr, string contenido) =>
@@ -184,6 +184,24 @@ public class RemisionServiceTests
         var soporte = Assert.Single(detalle.Soportes);
         Assert.True(soporte.IaHayFirma);
         Assert.Equal("29635", soporte.IaNumeroLeido);
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    public async Task Con_IA_el_sello_del_cliente_vale_con_o_sin_firma(bool firma, bool sello)
+    {
+        IaVe("29635", firma, sello: sello);
+        var logistica = await UsuarioAsync("Logistica", true, false);
+        await Servicio().RegistrarAsync([Rem(1, "29635")]);
+        var id = (await db.Remisiones.SingleAsync()).Id;
+
+        var detalle = await Servicio().ConfirmarEntregaAsync(id, logistica, null, [Archivo("sellada.jpg", QrOk)]);
+
+        Assert.Equal("Entregada", detalle.Estado);
+        var soporte = Assert.Single(detalle.Soportes);
+        Assert.True(soporte.IaHaySello);
+        Assert.Equal(firma, soporte.IaHayFirma);
     }
 
     [Fact]

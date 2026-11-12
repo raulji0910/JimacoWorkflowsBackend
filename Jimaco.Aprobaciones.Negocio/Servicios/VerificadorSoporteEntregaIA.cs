@@ -9,7 +9,8 @@ namespace Jimaco.Aprobaciones.Negocio.Servicios;
 
 /// <summary>
 /// Revisa con Claude (visión) la foto o el escaneo de una remisión firmada (2026-11-12, pedido del
-/// usuario): qué número de remisión se lee, si hay firma manuscrita del cliente y si es legible.
+/// usuario): qué número de remisión se lee, si hay firma manuscrita o sello del cliente (cualquiera
+/// de los dos vale) y si es legible.
 /// Activo solo si hay clave (<c>ANTHROPIC_API_KEY</c> o <c>Anthropic:ApiKey</c>) y
 /// <c>Entregas:VerificacionIA:Activo</c> no es false. Nunca lanza: un error técnico vuelve como
 /// <see cref="ResultadoVerificacionIA.Analizado"/> = false con el motivo.
@@ -29,10 +30,15 @@ public class VerificadorSoporteEntregaIA : IVerificadorSoporteEntrega
         - hay_firma_cliente: true solo si hay una firma o rúbrica manuscrita del cliente (en "Recibido Por",
           en la zona de firma o en otra parte de la hoja). Un nombre impreso por el sistema no es firma;
           un garabato, rúbrica o nombre escrito a mano sí lo es.
+        - hay_sello_cliente: true solo si hay un sello estampado (de tinta, de caucho) de la empresa o
+          del cliente que recibe — suele traer su nombre, NIT, "RECIBIDO" y/o una fecha. NO cuentan los
+          sellos y logos impresos en el formato de la remisión: el logo de JIMACO y el sello de
+          certificación SGS / ISO 9001 que trae la hoja impresa.
         - hay_nombre_o_cedula: true si se ve a mano el nombre o la cédula de quien recibe.
         - legible: false si la imagen está tan borrosa, oscura o cortada que no se puede revisar.
         - confianza: "alta", "media" o "baja".
-        - observacion: una frase corta en español para el operario de logística (qué falta o qué se ve).
+        - observacion: una frase corta en español para el operario de logística (qué falta o qué se ve;
+          si hay sello, decí de quién es si se lee).
         """;
 
     private readonly IConfiguration configuration;
@@ -123,7 +129,8 @@ public class VerificadorSoporteEntregaIA : IVerificadorSoporteEntrega
                 Legible: datos.legible,
                 Confianza: datos.confianza ?? "baja",
                 Observacion: datos.observacion,
-                Error: null);
+                Error: null,
+                HaySello: datos.hay_sello_cliente);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -140,18 +147,19 @@ public class VerificadorSoporteEntregaIA : IVerificadorSoporteEntrega
             numero_remision = new { type = new[] { "string", "null" } },
             es_remision_jimaco = new { type = "boolean" },
             hay_firma_cliente = new { type = "boolean" },
+            hay_sello_cliente = new { type = "boolean" },
             hay_nombre_o_cedula = new { type = "boolean" },
             legible = new { type = "boolean" },
             confianza = new { type = "string", @enum = new[] { "alta", "media", "baja" } },
             observacion = new { type = "string" },
         }),
         ["required"] = JsonSerializer.SerializeToElement(new[]
-            { "numero_remision", "es_remision_jimaco", "hay_firma_cliente", "hay_nombre_o_cedula", "legible", "confianza", "observacion" }),
+            { "numero_remision", "es_remision_jimaco", "hay_firma_cliente", "hay_sello_cliente", "hay_nombre_o_cedula", "legible", "confianza", "observacion" }),
         ["additionalProperties"] = JsonSerializer.SerializeToElement(false),
     };
 
     // Nombres en snake_case = los del esquema JSON que devuelve el modelo.
     private sealed record RespuestaIA(
-        string? numero_remision, bool es_remision_jimaco, bool hay_firma_cliente, bool hay_nombre_o_cedula,
+        string? numero_remision, bool es_remision_jimaco, bool hay_firma_cliente, bool hay_sello_cliente, bool hay_nombre_o_cedula,
         bool legible, string? confianza, string? observacion);
 }
