@@ -16,7 +16,8 @@ namespace Jimaco.Aprobaciones.Api.Controllers;
 [Route("api/[controller]")]
 [Authorize]
 public class SincronizacionController(IInstanciaDocumentoService instanciaService, IHojaAlistamientoService hojaAlistamientoService,
-    ICuentasPorPagarService cuentasPorPagarService, IConfiguracionCuentasPorPagarService configuracionCuentasPorPagarService) : ControllerBase
+    ICuentasPorPagarService cuentasPorPagarService, IConfiguracionCuentasPorPagarService configuracionCuentasPorPagarService,
+    IRemisionService remisionService) : ControllerBase
 {
     [HttpGet("pendientes-wo")]
     public async Task<ActionResult<IReadOnlyList<PendienteEscrituraWODto>>> ListarPendientesWO(CancellationToken ct) =>
@@ -136,6 +137,24 @@ public class SincronizacionController(IInstanciaDocumentoService instanciaServic
     public async Task<IActionResult> ReportarConflictoCreacionCE(int id, ReportarConflictoWODto dto, CancellationToken ct)
     {
         await cuentasPorPagarService.ReportarConflictoCreacionCEAsync(id, dto.Mensaje, ct);
+        return Ok();
+    }
+
+    // ---- Entregas / Remisiones (2026-11-12) ----
+
+    [HttpGet("remisiones/estado")]
+    public async Task<ActionResult<EstadoSincronizacionRemisionesDto>> EstadoRemisiones(CancellationToken ct) =>
+        Ok(await remisionService.ObtenerEstadoSincronizacionAsync(ct));
+
+    [HttpPost("remisiones")]
+    [RequestSizeLimit(20_000_000)]
+    public async Task<ActionResult<ResultadoSincronizacionRemisionesDto>> RegistrarRemisiones(IReadOnlyList<RemisionInputDto> remisiones, CancellationToken ct) =>
+        Ok(await remisionService.RegistrarAsync(remisiones, ct));
+
+    [HttpPost("remisiones/anuladas")]
+    public async Task<IActionResult> MarcarRemisionesAnuladas(IReadOnlyList<int> idsAsientoContableWO, CancellationToken ct)
+    {
+        await remisionService.MarcarAnuladasAsync(idsAsientoContableWO, ct);
         return Ok();
     }
 }

@@ -44,6 +44,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<LotePago> LotesPago => Set<LotePago>();
     public DbSet<TipoGiro> TiposGiro => Set<TipoGiro>();
     public DbSet<ConfiguracionCuentasPorPagar> ConfiguracionesCuentasPorPagar => Set<ConfiguracionCuentasPorPagar>();
+    public DbSet<Remision> Remisiones => Set<Remision>();
+    public DbSet<RenglonRemision> RenglonesRemision => Set<RenglonRemision>();
+    public DbSet<SoporteRemision> SoportesRemision => Set<SoporteRemision>();
+    public DbSet<ConfiguracionEntregas> ConfiguracionesEntregas => Set<ConfiguracionEntregas>();
     public DbSet<TerceroWO> TercerosWO => Set<TerceroWO>();
     public DbSet<ComprobanteEgreso> ComprobantesEgreso => Set<ComprobanteEgreso>();
     public DbSet<RenglonComprobanteEgreso> RenglonesComprobanteEgreso => Set<RenglonComprobanteEgreso>();
@@ -308,6 +312,33 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             e.HasData(TiposGiroSemilla.Todos);
         });
+
+        // ---- Entregas / Remisiones (2026-11-12) ----
+        modelBuilder.Entity<Remision>(e =>
+        {
+            e.HasIndex(r => r.IdAsientoContableWO).IsUnique();
+            e.HasIndex(r => new { r.Prefijo, r.Numero });
+            e.HasIndex(r => r.Estado);
+            e.Property(r => r.FechaSincronizacion).HasConversion(ConversorFechaUtc);
+            e.Property(r => r.FechaEntrega).HasConversion(ConversorFechaUtcNullable);
+            e.HasOne(r => r.EntregadaPorUsuario).WithMany().HasForeignKey(r => r.EntregadaPorUsuarioId)
+                .OnDelete(DeleteBehavior.NoAction);
+            e.HasMany(r => r.Renglones).WithOne(x => x.Remision).HasForeignKey(x => x.RemisionId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(r => r.Soportes).WithOne(x => x.Remision).HasForeignKey(x => x.RemisionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<RenglonRemision>(e => e.Property(r => r.Cantidad).HasPrecision(18, 4));
+
+        modelBuilder.Entity<SoporteRemision>(e =>
+        {
+            e.Property(x => x.FechaCarga).HasConversion(ConversorFechaUtc);
+            e.HasOne(x => x.SubidoPorUsuario).WithMany().HasForeignKey(x => x.SubidoPorUsuarioId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<ConfiguracionEntregas>(e => e.Property(c => c.Id).ValueGeneratedNever());
 
         modelBuilder.Entity<ConfiguracionCuentasPorPagar>(e =>
         {

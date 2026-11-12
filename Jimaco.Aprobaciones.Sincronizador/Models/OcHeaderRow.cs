@@ -129,3 +129,29 @@ public class CotizacionRecienteRow
     public decimal DocumentoNumero { get; set; }
     public DateTime Fecha { get; set; }
 }
+
+/// <summary>
+/// Encabezado de una Remisión (prefijo <c>REM</c>) para el módulo de Entregas (2026-11-12).
+/// Personalizado1..4 confirmados con la REM 29635: dirección de entrega, campo entrega/rec, OC del
+/// cliente, cotización. <see cref="Contabilizada"/> = tiene movimientos en
+/// [CuentasContables - Asientos - Detalles] (WO no tiene bandera de "contabilizado" en el encabezado).
+/// </summary>
+public class RemisionEntregaRow
+{
+    public int IdAsientoContable { get; set; }
+    public decimal DocumentoNumero { get; set; }
+    public DateTime Fecha { get; set; }
+    public int? IdTerceroExterno { get; set; }
+    public int? IdTerceroInterno { get; set; }
+    public int? IdDireccionExterno { get; set; }
+    public int? IdFormaDePago { get; set; }
+    public string? Nota { get; set; }
+    public string? Personalizado1 { get; set; }
+    public string? Personalizado2 { get; set; }
+    public string? Personalizado3 { get; set; }
+    public string? Personalizado4 { get; set; }
+    public string? IdUsuarioWO { get; set; }
+    public bool Anulada { get; set; }
+    public bool Contabilizada { get; set; }
+}
+

@@ -14,4 +14,8 @@ public record LoginResponseDto(string Token, string Nombre, string Email, IReadO
     // Módulo de Cuentas por Pagar — ver Rol.PuedeVerCuentasPorPagar.
     bool PuedeVerCuentasPorPagar,
     // Menú "Pagos" — ver Rol.PuedePagarCuentas.
-    bool PuedePagarCuentas = false);
+    bool PuedePagarCuentas = false,
+    // Entregas (Remisiones) — ver Rol.PuedeGestionarEntregas/PuedeVerEntregas. Cualquiera de los
+    // dos muestra el dashboard; solo el primero habilita imprimir/confirmar entregas.
+    bool PuedeGestionarEntregas = false,
+    bool PuedeVerEntregas = false);

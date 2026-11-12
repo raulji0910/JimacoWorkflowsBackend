@@ -338,6 +338,19 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                         });
                 });
 
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.ConfiguracionEntregas", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("FechaInicio")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ConfiguracionesEntregas");
+                });
+
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.CuentaBancoWO", b =>
                 {
                     b.Property<int>("Id")
@@ -1090,6 +1103,115 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.ToTable("RelacionesPago");
                 });
 
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.Remision", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("CampoEntrega")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("Ciudad")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<string>("Cliente")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("Cotizacion")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<string>("Direccion")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("DireccionEntrega")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("ElaboradoPorWO")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int?>("EntregadaPorUsuarioId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Estado")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("Fecha")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaEntrega")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaSincronizacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FormaDePago")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<int>("IdAsientoContableWO")
+                        .HasColumnType("int");
+
+                    b.Property<string>("NitCliente")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Nota")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("Numero")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("ObservacionEntrega")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("OrdenCompraCliente")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<string>("Prefijo")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Telefono")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<string>("Vendedor")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int?>("VerificacionQR")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EntregadaPorUsuarioId");
+
+                    b.HasIndex("Estado");
+
+                    b.HasIndex("IdAsientoContableWO")
+                        .IsUnique();
+
+                    b.HasIndex("Prefijo", "Numero");
+
+                    b.ToTable("Remisiones");
+                });
+
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.RemisionRenglon", b =>
                 {
                     b.Property<int>("Id")
@@ -1269,6 +1391,44 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.ToTable("RenglonesInstanciaDocumento");
                 });
 
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.RenglonRemision", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Cantidad")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("Codigo")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Descripcion")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("Orden")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RemisionId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UnidadMedida")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RemisionId");
+
+                    b.ToTable("RenglonesRemision");
+                });
+
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.Rol", b =>
                 {
                     b.Property<int>("Id")
@@ -1295,6 +1455,9 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Property<bool>("PuedeGestionarAlistamiento")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("PuedeGestionarEntregas")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("PuedePagarCuentas")
                         .HasColumnType("bit");
 
@@ -1302,6 +1465,9 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                         .HasColumnType("bit");
 
                     b.Property<bool>("PuedeVerCuentasPorPagar")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("PuedeVerEntregas")
                         .HasColumnType("bit");
 
                     b.HasKey("Id");
@@ -1320,9 +1486,11 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                             Nombre = "Admin",
                             PuedeDevolverCualquierDocumento = false,
                             PuedeGestionarAlistamiento = false,
+                            PuedeGestionarEntregas = false,
                             PuedePagarCuentas = false,
                             PuedeVerAlistamiento = false,
-                            PuedeVerCuentasPorPagar = false
+                            PuedeVerCuentasPorPagar = false,
+                            PuedeVerEntregas = false
                         });
                 });
 
@@ -1349,6 +1517,56 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.HasKey("Id");
 
                     b.ToTable("SincronizacionesCuentasPorPagar");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.SoporteRemision", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ContentType")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<DateTime>("FechaCarga")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("NombreArchivo")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("QrLeido")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("RemisionId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RutaArchivo")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("SubidoPorUsuarioId")
+                        .HasColumnType("int");
+
+                    b.Property<long>("TamanoBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Tipo")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RemisionId");
+
+                    b.HasIndex("SubidoPorUsuarioId");
+
+                    b.ToTable("SoportesRemision");
                 });
 
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.TerceroWO", b =>
@@ -2544,6 +2762,16 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Navigation("Rol");
                 });
 
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.Remision", b =>
+                {
+                    b.HasOne("Jimaco.Aprobaciones.Modelo.Entidades.Usuario", "EntregadaPorUsuario")
+                        .WithMany()
+                        .HasForeignKey("EntregadaPorUsuarioId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.Navigation("EntregadaPorUsuario");
+                });
+
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.RemisionRenglon", b =>
                 {
                     b.HasOne("Jimaco.Aprobaciones.Modelo.Entidades.RenglonDocumentoVinculado", "RenglonDocumentoVinculado")
@@ -2586,6 +2814,36 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                         .IsRequired();
 
                     b.Navigation("InstanciaDocumento");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.RenglonRemision", b =>
+                {
+                    b.HasOne("Jimaco.Aprobaciones.Modelo.Entidades.Remision", "Remision")
+                        .WithMany("Renglones")
+                        .HasForeignKey("RemisionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Remision");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.SoporteRemision", b =>
+                {
+                    b.HasOne("Jimaco.Aprobaciones.Modelo.Entidades.Remision", "Remision")
+                        .WithMany("Soportes")
+                        .HasForeignKey("RemisionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Jimaco.Aprobaciones.Modelo.Entidades.Usuario", "SubidoPorUsuario")
+                        .WithMany()
+                        .HasForeignKey("SubidoPorUsuarioId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Remision");
+
+                    b.Navigation("SubidoPorUsuario");
                 });
 
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.UsuarioRol", b =>
@@ -2656,6 +2914,13 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.RelacionPago", b =>
                 {
                     b.Navigation("Pagos");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.Remision", b =>
+                {
+                    b.Navigation("Renglones");
+
+                    b.Navigation("Soportes");
                 });
 
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.RenglonDocumentoVinculado", b =>

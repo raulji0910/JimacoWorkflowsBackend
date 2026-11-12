@@ -62,6 +62,16 @@ public class Rol
     /// </summary>
     public bool PuedePagarCuentas { get; set; }
 
+    /// <summary>
+    /// Entregas (2026-11-12): ver el dashboard de Remisiones de World Office, imprimirlas y confirmar
+    /// la entrega adjuntando el soporte firmado por el cliente — pensado para Logística. Implica
+    /// <see cref="PuedeVerEntregas"/>.
+    /// </summary>
+    public bool PuedeGestionarEntregas { get; set; }
+
+    /// <summary>Solo consultar el estado de las entregas (sin confirmar ni adjuntar) — supervisión.</summary>
+    public bool PuedeVerEntregas { get; set; }
+
     public ICollection<UsuarioRol> UsuarioRoles { get; set; } = [];
     public ICollection<PasoFlujoRol> PasoFlujoRoles { get; set; } = [];
 }

@@ -646,6 +646,76 @@ if (!(bool.TryParse(config["CuentasPorPagar:Activo"], out var cxpTercerosActivo)
     }
 }
 
+// ---- Entregas (2026-11-12): Remisiones CONTABILIZADAS → dashboard de Logística. Desde la fecha de
+// inicio que fija la Api (el día que el módulo salió a ese ambiente). Contabilizada = tiene
+// movimientos contables (WO no tiene bandera en el encabezado). Ya contabilizada WO no deja
+// editarla, así que se manda una sola vez; si después se anula, se avisa para sacarla del
+// dashboard. Entregas:Activo=false lo apaga. Un error acá no frena nada más. ----
+if (bool.TryParse(config["Entregas:Activo"], out var entregasActivo) && !entregasActivo)
+{
+    Console.WriteLine($"[{DateTime.Now:s}] Entregas:Activo=false — se omiten las remisiones.");
+}
+else
+{
+    try
+    {
+        var estadoRem = await jimaco.ObtenerEstadoRemisionesAsync();
+        var conocidas = estadoRem.IdsConocidos.ToHashSet();
+        var remisionesWO = await lector.ObtenerRemisionesParaEntregaAsync(estadoRem.FechaInicio);
+
+        var anuladas = remisionesWO.Where(r => r.Anulada && conocidas.Contains(r.IdAsientoContable))
+            .Select(r => r.IdAsientoContable).ToList();
+        if (anuladas.Count > 0)
+            await jimaco.MarcarRemisionesAnuladasAsync(anuladas);
+
+        var nuevas = remisionesWO.Where(r => !r.Anulada && r.Contabilizada && !conocidas.Contains(r.IdAsientoContable)).ToList();
+        var lote = new List<RemisionInputDto>();
+        foreach (var rem in nuevas)
+        {
+            var renglonesRem = await lector.ObtenerRenglonesAsync(rem.IdAsientoContable);
+            if (renglonesRem.Count == 0) continue;
+            var clienteRem = rem.IdTerceroExterno is int idCli ? await lector.ObtenerTerceroAsync(idCli) : null;
+            var vendedorRem = rem.IdTerceroInterno is int idVen ? await lector.ObtenerTerceroAsync(idVen) : null;
+            var direccionRem = rem.IdDireccionExterno is int idDir ? await lector.ObtenerDireccionPorIdAsync(idDir) : null;
+            var formaPagoRem = rem.IdFormaDePago is int idFp ? await lector.ObtenerFormaDePagoAsync(idFp) : null;
+
+            lote.Add(new RemisionInputDto(
+                IdAsientoContableWO: rem.IdAsientoContable,
+                Prefijo: "REM",
+                Numero: rem.DocumentoNumero.ToString("0"),
+                Fecha: rem.Fecha,
+                Cliente: clienteRem?.NombreCompleto,
+                NitCliente: clienteRem?.Identificacion,
+                Direccion: direccionRem?.Direccion,
+                Ciudad: direccionRem?.Ciudad,
+                Telefono: direccionRem?.Telefonos,
+                Vendedor: vendedorRem?.NombreCompleto,
+                ElaboradoPorWO: rem.IdUsuarioWO,
+                FormaDePago: formaPagoRem,
+                DireccionEntrega: rem.Personalizado1,
+                CampoEntrega: rem.Personalizado2,
+                OrdenCompraCliente: rem.Personalizado3,
+                Cotizacion: rem.Personalizado4,
+                Nota: rem.Nota,
+                Renglones: renglonesRem.Select(x => new RenglonRemisionInputDto(
+                    x.Codigo, x.Descripcion ?? "(sin descripción)", x.Cantidad, x.UnidadMedida)).ToList()));
+        }
+
+        if (lote.Count > 0)
+        {
+            var resultadoRem = await jimaco.RegistrarRemisionesAsync(lote);
+            Console.WriteLine($"[{DateTime.Now:s}] Entregas: {resultadoRem.Creadas} remisión(es) nueva(s) al dashboard.");
+        }
+        var sinContabilizar = remisionesWO.Count(r => !r.Anulada && !r.Contabilizada && !conocidas.Contains(r.IdAsientoContable));
+        Console.WriteLine($"[{DateTime.Now:s}] Entregas: desde {estadoRem.FechaInicio:yyyy-MM-dd} — {lote.Count} enviada(s), {sinContabilizar} sin contabilizar todavía, {anuladas.Count} anulada(s).");
+    }
+    catch (Exception ex)
+    {
+        // Ej. una Api que todavía no tiene el módulo de Entregas.
+        Console.Error.WriteLine($"[{DateTime.Now:s}] ERROR sincronizando remisiones para entregas: {ex.Message}");
+    }
+}
+
 Console.WriteLine($"[{DateTime.Now:s}] Listo.");
 
 // Texto libre escrito a mano ("16113", "COT16113"...) normalizado a la misma forma canónica que

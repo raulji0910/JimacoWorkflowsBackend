@@ -279,6 +279,41 @@ public class WorldOfficeReader(string connectionString)
     }
 
     /// <summary>
+    /// Entregas (2026-11-12): TODAS las Remisiones (<c>REM</c>) desde <paramref name="fechaInicio"/>
+    /// (piso fijo = el día que el módulo salió a producción), anuladas incluidas (para sacarlas del
+    /// dashboard si se anulan después), con la marca de si ya están contabilizadas. Son unas decenas
+    /// por día: un solo escaneo acotado por fecha.
+    /// </summary>
+    public async Task<IReadOnlyList<RemisionEntregaRow>> ObtenerRemisionesParaEntregaAsync(DateTime fechaInicio, CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT
+                a.IdAsientoContable,
+                a.DocumentoNúmero     AS DocumentoNumero,
+                a.Fecha,
+                a.IdTerceroExterno,
+                a.IdTerceroInterno,
+                a.IdDirecciónExterno  AS IdDireccionExterno,
+                a.IdFormaDePago,
+                a.Nota,
+                a.Personalizado1, a.Personalizado2, a.Personalizado3, a.Personalizado4,
+                a.IdUsuarioWO,
+                CAST(CASE WHEN a.senAnulado <> 0 THEN 1 ELSE 0 END AS bit) AS Anulada,
+                CAST(CASE WHEN EXISTS (SELECT 1 FROM [CuentasContables - Asientos - Detalles] d
+                                       WHERE d.IdAsientoContable = a.IdAsientoContable)
+                          THEN 1 ELSE 0 END AS bit) AS Contabilizada
+            FROM [CuentasContables - Asientos] a
+            WHERE a.prefijo = 'REM'
+              AND a.Fecha >= @FechaInicio;
+            """;
+
+        await using var conexion = new SqlConnection(connectionString);
+        var comando = new CommandDefinition(sql, new { FechaInicio = fechaInicio.Date }, cancellationToken: ct);
+        var filas = await conexion.QueryAsync<RemisionEntregaRow>(comando);
+        return filas.ToList();
+    }
+
+    /// <summary>
     /// Cotizaciones recientes (prefijo <c>COT</c>, no anuladas) marcadas a propósito por el vendedor
     /// como Hoja de Alistamiento sin OC (2026-10-22): el campo "Contacto" del encabezado en World
     /// Office (<c>Personalizado1</c> para este prefijo — confirmado por SQL contra la Cotización

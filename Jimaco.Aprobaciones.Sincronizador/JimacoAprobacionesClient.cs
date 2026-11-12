@@ -172,6 +172,43 @@ public class JimacoAprobacionesClient(HttpClient http, string email, string pass
         await LanzarSiErrorAsync(response, ct);
     }
 
+    // ---- Entregas / Remisiones (2026-11-12) ----
+
+    public async Task<EstadoSincronizacionRemisionesDto> ObtenerEstadoRemisionesAsync(CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/sincronizacion/remisiones/estado");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<EstadoSincronizacionRemisionesDto>(JsonOpciones, ct))!;
+    }
+
+    public async Task<ResultadoSincronizacionRemisionesDto> RegistrarRemisionesAsync(IReadOnlyList<RemisionInputDto> remisiones, CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "api/sincronizacion/remisiones")
+        {
+            Content = JsonContent.Create(remisiones, options: JsonOpciones)
+        };
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<ResultadoSincronizacionRemisionesDto>(JsonOpciones, ct))!;
+    }
+
+    public async Task MarcarRemisionesAnuladasAsync(IReadOnlyList<int> idsAsientoContable, CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "api/sincronizacion/remisiones/anuladas")
+        {
+            Content = JsonContent.Create(idsAsientoContable, options: JsonOpciones)
+        };
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+    }
+
     /// <summary>Prefijo del CE y si se crean (2026-11-11) — lo maneja un administrador desde la página.</summary>
     public async Task<ConfiguracionCuentasPorPagarDto> ObtenerConfiguracionCEAsync(CancellationToken ct = default)
     {
