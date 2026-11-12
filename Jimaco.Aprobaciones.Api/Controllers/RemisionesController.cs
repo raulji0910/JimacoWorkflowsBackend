@@ -16,8 +16,8 @@ public class RemisionesController(IRemisionService remisionService) : Controller
     private int UsuarioActualId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
     [HttpGet]
-    public async Task<ActionResult<RemisionesPaginaDto>> Listar([FromQuery] FiltroRemisionesDto filtro, CancellationToken ct) =>
-        Ok(await remisionService.ListarAsync(filtro, UsuarioActualId, ct));
+    public async Task<ActionResult<IReadOnlyList<RemisionTableroDto>>> Listar(CancellationToken ct) =>
+        Ok(await remisionService.ListarAsync(UsuarioActualId, ct));
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<RemisionDetalleDto>> Obtener(int id, CancellationToken ct) =>

@@ -10,24 +10,34 @@ using QuestPDF.Infrastructure;
 namespace Jimaco.Aprobaciones.Negocio.Servicios;
 
 /// <summary>
-/// PDF de entrega de una o varias Remisiones (una por página) — mismo estilo visual que el PDF de
-/// la OC (logo, franjas verdes), SIN precios (es el soporte que lleva el conductor) y con:
-/// - un QR con el código de la remisión (<see cref="RemisionService.CodigoQR"/>): al subir la foto
-///   del soporte firmado, el navegador lo lee y confirma que es esta remisión;
-/// - la zona de "Recibido por" para la firma del cliente.
+/// PDF de entrega de una o varias Remisiones (una por página), calcado del formato real de la
+/// Remisión de World Office (REMISION_EJEMPLO.pdf, REM 29421): franja "REMISION No.", cliente/NIT/
+/// fecha, dirección de entrega, campo de entrega y OC, elaborado por y forma de pago, sello SGS y
+/// logo, tabla Item/Código/Cantidad/Medida/Descripción, "Despachado/Recibido por" y el pie legal.
+/// Lo único que agrega es el QR (<see cref="RemisionService.CodigoQR"/>): al subir la foto de la
+/// remisión firmada, el navegador lo lee y confirma que es esta remisión.
 /// </summary>
 public class RemisionPdfGenerador : IRemisionPdfGenerador
 {
     private static readonly CultureInfo CulturaEsCo = CultureInfo.GetCultureInfo("es-CO");
-    private static readonly byte[] Logo = CargarLogo();
-    private static readonly string VerdeEtiqueta = Colors.Green.Medium;
+    private static readonly byte[] Logo = Cargar("logo-jimaco.png");
+    private static readonly byte[] SelloSgs = Cargar("sello-sgs.png");
 
-    private const string PiePagina = "Pbx: 601 378 29 33  --  Calle 23 # 25 - 06   -   www.jimaco.com.co";
+    // Verde de los encabezados de World Office (verde puro, más saturado que el de la OC).
+    private const string Verde = "#00A000";
 
-    private static byte[] CargarLogo()
+    private const string AvisoCambios =
+        "Informacion importante: NO SE ACEPTAN CAMBIOS NI DEVOLUCIONES DESPUES DE 8 DIAS DE ENTREGADO EL PEDIDO. " +
+        "MATERIAL CORTADO O FABRICADO NO SE ACEPTA NINGUN CAMBIO O DEVOLUCION.";
+    private const string Contacto = "Pbx: 601378 29 33 - CALLE 23 # 25 - 06 - cartera@jimaco.com.co - www.jimaco.com.co";
+    private const string Tributario =
+        "Somos Grandes Contribuyentes de ICA Según Resolución DDI 029334 de 31 de octubre de 2025 - No Somos Auto " +
+        "Retenedores de Renta - Actividad Económica 4663 - ICA 6,9 X 1000 IVA Régimen Común No somos Agentes de Retención de IVA";
+
+    private static byte[] Cargar(string archivo)
     {
-        using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Jimaco.Aprobaciones.Negocio.Recursos.logo-jimaco.png")
-            ?? throw new InvalidOperationException("No se encontró el logo embebido.");
+        using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream($"Jimaco.Aprobaciones.Negocio.Recursos.{archivo}")
+            ?? throw new InvalidOperationException($"No se encontró el recurso embebido {archivo}.");
         using var memoria = new MemoryStream();
         stream.CopyTo(memoria);
         return memoria.ToArray();
@@ -36,171 +46,177 @@ public class RemisionPdfGenerador : IRemisionPdfGenerador
     internal static byte[] GenerarQR(string texto)
     {
         using var generador = new QRCodeGenerator();
-        // Nivel Q (25 % de corrección): aguanta arrugas, sombras y algo de la firma encima.
+        // Nivel Q (25 % de corrección): aguanta arrugas, sombras y algo de firma encima.
         using var datos = generador.CreateQrCode(texto, QRCodeGenerator.ECCLevel.Q);
         return new PngByteQRCode(datos).GetGraphic(10);
     }
 
-    public byte[] Generar(IReadOnlyList<RemisionDetalleDto> remisiones)
-    {
-        var documento = Document.Create(contenedor =>
+    public byte[] Generar(IReadOnlyList<RemisionDetalleDto> remisiones) =>
+        Document.Create(contenedor =>
         {
             foreach (var r in remisiones)
                 contenedor.Page(pagina => Pagina(pagina, r));
-        });
-        return documento.GeneratePdf();
-    }
+        }).GeneratePdf();
 
     private static void Pagina(PageDescriptor pagina, RemisionDetalleDto r)
     {
         var qr = GenerarQR(r.CodigoQR);
 
         pagina.Size(PageSizes.Letter);
-        pagina.Margin(24);
+        pagina.MarginHorizontal(26);
+        pagina.MarginVertical(30);
         pagina.DefaultTextStyle(x => x.FontSize(9).FontFamily("DejaVu Sans"));
 
-        pagina.Content().Column(col =>
+        pagina.Header().Row(fila =>
         {
-            col.Spacing(6);
-
-            // ---- Encabezado: logo · título y número · QR ----
-            col.Item().Row(fila =>
+            // ---- Bloque izquierdo: los datos, igual que World Office ----
+            fila.RelativeItem(5.3f).Column(c =>
             {
-                fila.ConstantItem(190).Height(75).Image(Logo).FitArea();
-                fila.RelativeItem().PaddingHorizontal(8).AlignMiddle().Column(c =>
+                c.Item().Row(t =>
                 {
-                    c.Item().AlignCenter().Text("REMISIÓN").FontSize(18).Bold().FontColor(VerdeEtiqueta);
-                    c.Item().AlignCenter().Text($"{r.Prefijo} {r.Numero}").FontSize(16).Bold();
-                    c.Item().AlignCenter().Text(r.Fecha.ToString("d 'de' MMMM 'de' yyyy", CulturaEsCo)).FontSize(9);
+                    t.RelativeItem(3).Background(Verde).PaddingVertical(2).AlignCenter()
+                        .Text("REMISION No.").FontSize(14).Bold().FontColor(Colors.White);
+                    t.RelativeItem(2).AlignCenter().AlignMiddle().Text(r.Numero).FontSize(14).Bold();
                 });
-                fila.ConstantItem(95).Column(c =>
+
+                c.Item().Table(t =>
                 {
-                    c.Item().Width(95).Height(95).Image(qr).FitArea();
-                    c.Item().AlignCenter().Text(r.CodigoQR).FontSize(6.5f);
+                    t.ColumnsDefinition(cd =>
+                    {
+                        cd.ConstantColumn(52);
+                        cd.RelativeColumn(1.1f);
+                        cd.RelativeColumn(1.6f);
+                    });
+                    t.Cell().Element(Etiqueta).Text("CLIENTE");
+                    t.Cell().ColumnSpan(2).Element(Valor).Text(r.Cliente ?? "");
+                    t.Cell().Element(Etiqueta).Text("NIT");
+                    t.Cell().Element(Valor).Text(r.NitCliente ?? "");
+                    t.Cell().Element(Valor).AlignCenter().Text(r.Fecha.ToString("dddd, d 'de' MMMM 'de' yyyy", CulturaEsCo));
+                });
+
+                c.Item().Element(EtiquetaCentrada).Text("DIRECCION DE ENTREGA");
+                c.Item().Element(ValorCentrado).Text(r.DireccionEntrega ?? "");
+
+                c.Item().Table(t =>
+                {
+                    t.ColumnsDefinition(cd =>
+                    {
+                        cd.RelativeColumn(2.6f);
+                        cd.RelativeColumn(1.6f);
+                    });
+                    t.Cell().Element(EtiquetaCentrada).Text("CAMPO DE ENTREGA Y/O QUIEN RECIBE");
+                    t.Cell().Element(EtiquetaCentrada).Text("ORDEN DE COMPRA");
+                    t.Cell().Element(ValorCentrado).Text(r.CampoEntrega ?? "");
+                    t.Cell().Element(ValorCentrado).Text(r.OrdenCompraCliente ?? "");
+                    t.Cell().Element(EtiquetaCentrada).Text("ELABORADO POR");
+                    t.Cell().Element(EtiquetaCentrada).Text("FORMA DE PAGO");
+                    t.Cell().PaddingHorizontal(2).Text(r.Vendedor ?? r.ElaboradoPorWO ?? "").FontSize(8.5f);
+                    t.Cell().AlignCenter().Text(r.FormaDePago ?? "").FontSize(8.5f);
                 });
             });
 
-            // ---- Cliente ----
-            col.Item().Table(t =>
+            // ---- Bloque derecho: sello SGS, logo y el QR de esta remisión ----
+            fila.RelativeItem(4.7f).PaddingLeft(6).Row(d =>
             {
-                t.ColumnsDefinition(c =>
+                d.RelativeItem().AlignMiddle().Column(s =>
                 {
-                    c.RelativeColumn(1.1f);
-                    c.RelativeColumn(2.4f);
-                    c.RelativeColumn(0.8f);
-                    c.RelativeColumn(1.4f);
+                    s.Item().AlignCenter().MaxWidth(78).Image(SelloSgs).FitWidth();
                 });
-                Par(t, "CLIENTE", r.Cliente);
-                Par(t, "NIT", r.NitCliente);
-                Par(t, "DIRECCIÓN", r.Direccion);
-                Par(t, "CIUDAD", r.Ciudad);
-                Par(t, "TELÉFONO", r.Telefono);
-                Par(t, "VENDEDOR", r.Vendedor);
+                d.RelativeItem(1.7f).AlignMiddle().Column(l =>
+                {
+                    l.Item().AlignCenter().MaxWidth(150).Image(Logo).FitWidth();
+                });
+                d.ConstantItem(86).AlignMiddle().Column(q =>
+                {
+                    q.Item().AlignCenter().Width(80).Height(80).Image(qr).FitArea();
+                    q.Item().AlignCenter().Text(r.CodigoQR).FontSize(6);
+                });
+            });
+        });
+
+        // Como en World Office: el recuadro de ítems llega hasta el pie, con las líneas de las
+        // columnas de arriba abajo (capa de fondo extendida) aunque haya un solo ítem.
+        pagina.Content().PaddingTop(6).Layers(capas =>
+        {
+            capas.Layer().Extend().Border(1).Row(lineas =>
+            {
+                foreach (var ancho in AnchosColumnas)
+                    lineas.ConstantItem(ancho).BorderRight(1);
+                lineas.RelativeItem();
             });
 
-            // ---- Entrega ----
-            col.Item().Table(t =>
+            capas.PrimaryLayer().Table(t =>
             {
-                t.ColumnsDefinition(c =>
+                t.ColumnsDefinition(cd =>
                 {
-                    c.RelativeColumn(1.1f);
-                    c.RelativeColumn(2.4f);
-                    c.RelativeColumn(0.8f);
-                    c.RelativeColumn(1.4f);
-                });
-                Par(t, "DIRECCIÓN ENTREGA", r.DireccionEntrega);
-                Par(t, "COTIZACIÓN", r.Cotizacion);
-                Par(t, "CAMPO ENTREGA", r.CampoEntrega);
-                Par(t, "OC CLIENTE", r.OrdenCompraCliente);
-            });
-
-            if (!string.IsNullOrWhiteSpace(r.Nota) && !string.Equals(r.Nota.Trim(), "REMISIÓN", StringComparison.OrdinalIgnoreCase))
-            {
-                col.Item().Table(t =>
-                {
-                    t.ColumnsDefinition(c => c.RelativeColumn());
-                    t.Cell().Element(EtiquetaVerde).Text("OBSERVACIONES");
-                    t.Cell().Element(ValorConBorde).Text(r.Nota);
-                });
-            }
-
-            // ---- Renglones (sin precios) ----
-            col.Item().Table(t =>
-            {
-                t.ColumnsDefinition(c =>
-                {
-                    c.ConstantColumn(24);
-                    c.ConstantColumn(80);
-                    c.RelativeColumn();
-                    c.ConstantColumn(50);
-                    c.ConstantColumn(60);
-                    c.ConstantColumn(70);
+                    foreach (var ancho in AnchosColumnas) cd.ConstantColumn(ancho);
+                    cd.RelativeColumn();
                 });
                 t.Header(h =>
                 {
-                    Encabezado(h.Cell(), "#");
-                    Encabezado(h.Cell(), "Código");
-                    Encabezado(h.Cell(), "Descripción");
-                    Encabezado(h.Cell(), "Unidad");
-                    Encabezado(h.Cell(), "Cantidad");
-                    Encabezado(h.Cell(), "Recibido ✓");
+                    foreach (var titulo in new[] { "Item", "Código", "Cantidad", "Medida", "Descripción" })
+                        h.Cell().Border(1).Background(Verde).PaddingVertical(2).AlignCenter()
+                            .Text(titulo).Bold().FontColor(Colors.White).FontSize(9);
                 });
                 foreach (var x in r.Renglones)
                 {
-                    Dato(t.Cell(), x.Orden.ToString(CulturaEsCo), centrado: true);
-                    Dato(t.Cell(), x.Codigo ?? "");
-                    Dato(t.Cell(), x.Descripcion);
-                    Dato(t.Cell(), x.UnidadMedida ?? "", centrado: true);
-                    Dato(t.Cell(), x.Cantidad.ToString("0.##", CulturaEsCo), centrado: true);
-                    Dato(t.Cell(), "", centrado: true);
+                    Renglon(t.Cell(), x.Orden.ToString(CulturaEsCo), true);
+                    Renglon(t.Cell(), x.Codigo ?? "", true);
+                    Renglon(t.Cell(), x.Cantidad.ToString("0.##", CulturaEsCo), true);
+                    Renglon(t.Cell(), x.UnidadMedida ?? "", true);
+                    Renglon(t.Cell(), x.Descripcion, false);
                 }
             });
-
-            // ---- Recibido por (firma del cliente) ----
-            col.Item().PaddingTop(10).Table(t =>
-            {
-                t.ColumnsDefinition(c =>
-                {
-                    c.RelativeColumn(2);
-                    c.RelativeColumn(1.2f);
-                    c.RelativeColumn(1);
-                });
-                t.Cell().ColumnSpan(3).Element(EtiquetaVerde).Text("RECIBIDO A SATISFACCIÓN POR EL CLIENTE");
-                Firma(t.Cell(), "Nombre");
-                Firma(t.Cell(), "Cédula");
-                Firma(t.Cell(), "Fecha");
-                t.Cell().ColumnSpan(3).Element(c => ValorConBorde(c).Height(60)).AlignBottom()
-                    .Text("Firma y sello").FontSize(7).FontColor(Colors.Grey.Darken1);
-            });
-
-            col.Item().AlignCenter().Text("Al confirmar la entrega, tome la foto de esta hoja completa, con el código QR visible.")
-                .FontSize(7.5f).Italic().FontColor(Colors.Grey.Darken1);
         });
 
-        pagina.Footer().AlignCenter().Text(PiePagina).FontSize(7).FontColor(Colors.Grey.Darken1);
+        pagina.Footer().Column(pie =>
+        {
+            pie.Item().PaddingBottom(2).Row(f =>
+            {
+                f.RelativeItem().Text(t =>
+                {
+                    t.Span("Despachado Por: ").Bold();
+                    t.Span("______________________________________").Bold();
+                });
+                f.RelativeItem().Text(t =>
+                {
+                    t.Span("Recibido Por: ").Bold();
+                    t.Span("______________________________________").Bold();
+                });
+            });
+            pie.Item().Text("Nombre, cédula y firma de quien recibe. Al confirmar la entrega, tome la foto de la hoja completa con el código QR visible.")
+                .FontSize(6.5f).Italic().FontColor(Colors.Grey.Darken1);
+            pie.Item().PaddingTop(3).Background(Verde).PaddingHorizontal(4).PaddingVertical(2).Column(v =>
+            {
+                v.Item().AlignCenter().Text(AvisoCambios).FontSize(8.5f).Bold().Italic().Underline().FontColor(Colors.White);
+                v.Item().AlignCenter().Text(Contacto).FontSize(8.5f).Bold().FontColor(Colors.White);
+            });
+            pie.Item().PaddingTop(2).AlignCenter().Text(Tributario).FontSize(8).Bold().Underline();
+        });
     }
 
-    private static void Par(TableDescriptor t, string etiqueta, string? valor)
+    // Item, Código, Cantidad, Medida (Descripción ocupa el resto).
+    private static readonly float[] AnchosColumnas = [44, 98, 54, 44];
+
+    private static void Renglon(IContainer c, string texto, bool centrado)
     {
-        t.Cell().Element(EtiquetaVerde).Text(etiqueta);
-        t.Cell().Element(ValorConBorde).Text(string.IsNullOrWhiteSpace(valor) ? "—" : valor);
+        var celda = c.PaddingHorizontal(3).PaddingVertical(2);
+        (centrado ? celda.AlignCenter() : celda).Text(texto).FontSize(9);
     }
 
-    private static void Encabezado(IContainer c, string texto) =>
-        c.Border(0.75f).Background(Colors.Green.Lighten3).Padding(3).AlignCenter().Text(texto).Bold().FontSize(8);
+    private static IContainer Etiqueta(IContainer c) =>
+        c.Background(Verde).PaddingHorizontal(2).PaddingVertical(1)
+            .DefaultTextStyle(x => x.FontColor(Colors.White).FontSize(8).Bold());
 
-    private static void Dato(IContainer c, string texto, bool centrado = false)
-    {
-        var celda = c.Border(0.75f).BorderColor(Colors.Grey.Lighten1).Padding(3).MinHeight(16);
-        (centrado ? celda.AlignCenter() : celda).Text(texto).FontSize(8.5f);
-    }
+    private static IContainer EtiquetaCentrada(IContainer c) =>
+        c.Background(Verde).BorderBottom(1).BorderColor(Colors.White).PaddingVertical(1).AlignCenter()
+            .DefaultTextStyle(x => x.FontColor(Colors.White).FontSize(8).Bold());
 
-    private static void Firma(IContainer c, string etiqueta) =>
-        ValorConBorde(c).Height(34).AlignBottom().Text(etiqueta).FontSize(7).FontColor(Colors.Grey.Darken1);
+    private static IContainer Valor(IContainer c) =>
+        c.Border(0.5f).BorderColor(Colors.Grey.Lighten1).PaddingHorizontal(3).PaddingVertical(1)
+            .DefaultTextStyle(x => x.FontSize(8.5f));
 
-    private static IContainer EtiquetaVerde(IContainer c) =>
-        c.Border(0.75f).Background(VerdeEtiqueta).Padding(4).DefaultTextStyle(x => x.FontColor(Colors.White).FontSize(8).Bold());
-
-    private static IContainer ValorConBorde(IContainer c) =>
-        c.Border(0.75f).BorderColor(Colors.Grey.Lighten1).Padding(4);
+    private static IContainer ValorCentrado(IContainer c) =>
+        c.Border(0.5f).BorderColor(Colors.Grey.Lighten1).PaddingVertical(1).AlignCenter()
+            .DefaultTextStyle(x => x.FontSize(8.5f));
 }

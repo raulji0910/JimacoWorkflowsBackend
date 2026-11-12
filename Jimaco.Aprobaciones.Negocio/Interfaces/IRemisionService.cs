@@ -19,7 +19,11 @@ public interface IRemisionService
     Task MarcarAnuladasAsync(IReadOnlyList<int> idsAsientoContableWO, CancellationToken ct = default);
 
     // ---- Página ----
-    Task<RemisionesPaginaDto> ListarAsync(FiltroRemisionesDto filtro, int usuarioId, CancellationToken ct = default);
+    /// <summary>
+    /// Todas las por entregar + las entregadas de los últimos <c>Entregas:DiasEntregadasVisibles</c>
+    /// días (default 60) — el dashboard filtra y pagina en el navegador, como el de Alistamiento.
+    /// </summary>
+    Task<IReadOnlyList<RemisionTableroDto>> ListarAsync(int usuarioId, CancellationToken ct = default);
 
     Task<RemisionDetalleDto> ObtenerAsync(int id, int usuarioId, CancellationToken ct = default);
 

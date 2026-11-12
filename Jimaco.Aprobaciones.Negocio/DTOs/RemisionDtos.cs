@@ -33,10 +33,11 @@ public record ResultadoSincronizacionRemisionesDto(int Creadas, int YaExistian);
 
 // Lo que ve la página
 
-/// <summary>Estado: "PorEntregar", "Entregada", "Revisar" (entregada con QR que no coincide o sin QR) o "Todas".</summary>
-public record FiltroRemisionesDto(string? Estado, string? Buscar, int Pagina = 1, int? TamanoPagina = null);
-
-public record RemisionResumenDto(
+/// <summary>
+/// Una fila del dashboard de Entregas (2026-11-12, mismo formato que el de Alistamiento). EnAlerta =
+/// por entregar hace más de Entregas:HorasUmbralAlerta horas desde que llegó (contabilizada).
+/// </summary>
+public record RemisionTableroDto(
     int Id,
     string Numero,
     DateTime Fecha,
@@ -45,25 +46,17 @@ public record RemisionResumenDto(
     string? Ciudad,
     string? DireccionEntrega,
     string? CampoEntrega,
-    string? Vendedor,
+    string? ElaboradoPor,
     string? Cotizacion,
     string? OrdenCompraCliente,
+    int CantidadRenglones,
+    /// <summary>Cuándo llegó al sistema (≈ cuándo se contabilizó en WO) — desde acá corre el atraso.</summary>
+    DateTime FechaContabilizada,
     string Estado,
+    bool EnAlerta,
     DateTime? FechaEntrega,
     string? EntregadaPor,
-    string? VerificacionQR,
-    int CantidadRenglones,
-    int CantidadSoportes);
-
-public record RemisionesPaginaDto(
-    IReadOnlyList<RemisionResumenDto> Items,
-    int Total,
-    int Pagina,
-    int TamanoPagina,
-    int PorEntregar,
-    int Entregadas,
-    int Revisar,
-    bool PuedeGestionar);
+    string? VerificacionQR);
 
 public record RenglonRemisionDto(int Orden, string? Codigo, string Descripcion, decimal Cantidad, string? UnidadMedida);
 

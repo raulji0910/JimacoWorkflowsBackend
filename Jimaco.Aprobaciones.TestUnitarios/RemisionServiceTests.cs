@@ -5,6 +5,7 @@ using Jimaco.Aprobaciones.Negocio.DTOs;
 using Jimaco.Aprobaciones.Negocio.Interfaces;
 using Jimaco.Aprobaciones.Negocio.Servicios;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Moq;
 using Xunit;
 
@@ -27,7 +28,17 @@ public class RemisionServiceTests
         db.SaveChanges();
     }
 
-    private RemisionService Servicio() => new(db, almacenamiento.Object, new RemisionPdfGenerador());
+    private sealed class Reloj : TimeProvider
+    {
+        public DateTimeOffset Ahora { get; set; } = DateTimeOffset.UtcNow;
+        public override DateTimeOffset GetUtcNow() => Ahora;
+    }
+
+    private readonly Reloj reloj = new();
+
+    private RemisionService Servicio() => new(db, almacenamiento.Object, new RemisionPdfGenerador(),
+        Mock.Of<IConfiguration>(c => c["Entregas:HorasUmbralAlerta"] == "48"),
+        reloj);
 
     private async Task<int> UsuarioAsync(string nombre, bool gestiona, bool ve)
     {
@@ -78,11 +89,11 @@ public class RemisionServiceTests
         await Servicio().RegistrarAsync([Rem(1, "29635")]);
         var id = (await db.Remisiones.SingleAsync()).Id;
 
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => Servicio().ListarAsync(new FiltroRemisionesDto(null, null), nadie));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => Servicio().ListarAsync(nadie));
 
-        var pagina = await Servicio().ListarAsync(new FiltroRemisionesDto(null, null), soloVe);
-        Assert.False(pagina.PuedeGestionar);
-        Assert.Single(pagina.Items);
+        Assert.Single(await Servicio().ListarAsync(soloVe));
+        Assert.False((await Servicio().ObtenerAsync(id, soloVe)).PuedeGestionar);
+        Assert.True((await Servicio().GenerarPdfAsync([id], soloVe)).Length > 1000); // ver también imprime
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             Servicio().ConfirmarEntregaAsync(id, soloVe, null, [Archivo("f.jpg", null)]));
@@ -137,7 +148,7 @@ public class RemisionServiceTests
     }
 
     [Fact]
-    public async Task Listar_separa_por_estado_y_marca_las_que_hay_que_revisar()
+    public async Task Tablero_trae_por_entregar_y_entregadas_y_marca_atrasadas()
     {
         var logistica = await UsuarioAsync("Logistica", true, false);
         await Servicio().RegistrarAsync([Rem(1, "29635"), Rem(2, "29636"), Rem(3, "29637"), Rem(4, "29638")]);
@@ -146,18 +157,20 @@ public class RemisionServiceTests
         await Servicio().ConfirmarEntregaAsync(ids[1], logistica, null, [Archivo("b.jpg", null)]);
         await Servicio().MarcarAnuladasAsync([4]);
 
-        var porEntregar = await Servicio().ListarAsync(new FiltroRemisionesDto("PorEntregar", null), logistica);
-        Assert.Equal(["29637"], porEntregar.Items.Select(i => i.Numero));
-        Assert.Equal(1, porEntregar.PorEntregar);
-        Assert.Equal(2, porEntregar.Entregadas);
-        Assert.Equal(1, porEntregar.Revisar);
-        Assert.True(porEntregar.PuedeGestionar);
+        var recien = await Servicio().ListarAsync(logistica);
+        Assert.Equal(["29635", "29636", "29637"], recien.Select(r => r.Numero).Order());
+        Assert.All(recien, r => Assert.False(r.EnAlerta));
+        Assert.Equal("SinQR", recien.Single(r => r.Numero == "29636").VerificacionQR);
 
-        var revisar = await Servicio().ListarAsync(new FiltroRemisionesDto("Revisar", null), logistica);
-        Assert.Equal(["29636"], revisar.Items.Select(i => i.Numero));
+        // 49 h después: la por entregar pasa a atrasada; las entregadas nunca.
+        reloj.Ahora = reloj.Ahora.AddHours(49);
+        var despues = await Servicio().ListarAsync(logistica);
+        Assert.True(despues.Single(r => r.Numero == "29637").EnAlerta);
+        Assert.False(despues.Single(r => r.Numero == "29635").EnAlerta);
 
-        var buscar = await Servicio().ListarAsync(new FiltroRemisionesDto("Todas", "29637"), logistica);
-        Assert.Single(buscar.Items);
+        // Pasados 60 días, las entregadas ya no se traen (la por entregar sí).
+        reloj.Ahora = reloj.Ahora.AddDays(61);
+        Assert.Equal(["29637"], (await Servicio().ListarAsync(logistica)).Select(r => r.Numero));
     }
 
     [Fact]

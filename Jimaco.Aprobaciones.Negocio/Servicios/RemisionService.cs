@@ -3,15 +3,22 @@ using Jimaco.Aprobaciones.Modelo.Entidades;
 using Jimaco.Aprobaciones.Negocio.DTOs;
 using Jimaco.Aprobaciones.Negocio.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace Jimaco.Aprobaciones.Negocio.Servicios;
 
 /// <inheritdoc cref="IRemisionService"/>
-public class RemisionService(AppDbContext db, IAlmacenamientoArchivos almacenamiento, IRemisionPdfGenerador pdfGenerador)
-    : IRemisionService
+public class RemisionService(AppDbContext db, IAlmacenamientoArchivos almacenamiento, IRemisionPdfGenerador pdfGenerador,
+    IConfiguration configuration, TimeProvider reloj) : IRemisionService
 {
-    private const int TamanoPaginaPorDefecto = 20;
     private const int MaxRemisionesPorPdf = 50;
+
+    /// <summary>Horas por entregar desde que llegó para pasar a "Atrasada" (alerta roja y sonido).</summary>
+    private double HorasUmbralAlerta =>
+        double.TryParse(configuration["Entregas:HorasUmbralAlerta"], out var h) ? h : 48;
+
+    private int DiasEntregadasVisibles =>
+        int.TryParse(configuration["Entregas:DiasEntregadasVisibles"], out var d) ? d : 60;
 
     /// <summary>Lo que lleva el QR impreso — el navegador compara el QR leído del soporte contra esto.</summary>
     public static string CodigoQR(Remision r) => $"JIMACO-{r.Prefijo}-{r.Numero}";
@@ -92,71 +99,32 @@ public class RemisionService(AppDbContext db, IAlmacenamientoArchivos almacenami
     // Página
     // ---------------------------------------------------------------------------------------------
 
-    public async Task<RemisionesPaginaDto> ListarAsync(FiltroRemisionesDto filtro, int usuarioId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<RemisionTableroDto>> ListarAsync(int usuarioId, CancellationToken ct = default)
     {
-        var (_, puedeGestionar) = await ExigirVerAsync(usuarioId, ct);
+        await ExigirVerAsync(usuarioId, ct);
+        var ahora = reloj.GetUtcNow().UtcDateTime;
+        var desdeEntregadas = ahora.AddDays(-DiasEntregadasVisibles);
+        var umbral = HorasUmbralAlerta;
 
-        var visibles = db.Remisiones.AsNoTracking().Where(r => r.Estado != EstadoRemision.Anulada);
-
-        var texto = filtro.Buscar?.Trim();
-        if (!string.IsNullOrEmpty(texto))
-        {
-            visibles = visibles.Where(r =>
-                r.Numero.Contains(texto) ||
-                (r.Cliente != null && r.Cliente.Contains(texto)) ||
-                (r.NitCliente != null && r.NitCliente.Contains(texto)) ||
-                (r.Ciudad != null && r.Ciudad.Contains(texto)) ||
-                (r.DireccionEntrega != null && r.DireccionEntrega.Contains(texto)) ||
-                (r.CampoEntrega != null && r.CampoEntrega.Contains(texto)) ||
-                (r.Vendedor != null && r.Vendedor.Contains(texto)) ||
-                (r.Cotizacion != null && r.Cotizacion.Contains(texto)) ||
-                (r.OrdenCompraCliente != null && r.OrdenCompraCliente.Contains(texto)));
-        }
-
-        // Conteos con el filtro de texto aplicado, para los chips de estado.
-        var porEntregar = await visibles.CountAsync(r => r.Estado == EstadoRemision.PorEntregar, ct);
-        var entregadas = await visibles.CountAsync(r => r.Estado == EstadoRemision.Entregada, ct);
-        var revisar = await visibles.CountAsync(r => r.Estado == EstadoRemision.Entregada
-            && r.VerificacionQR != null && r.VerificacionQR != VerificacionQRSoporte.Coincide, ct);
-
-        var consulta = (filtro.Estado ?? "PorEntregar") switch
-        {
-            "Entregada" => visibles.Where(r => r.Estado == EstadoRemision.Entregada),
-            "Revisar" => visibles.Where(r => r.Estado == EstadoRemision.Entregada
-                && r.VerificacionQR != null && r.VerificacionQR != VerificacionQRSoporte.Coincide),
-            "Todas" => visibles,
-            _ => visibles.Where(r => r.Estado == EstadoRemision.PorEntregar)
-        };
-
-        // Por entregar: la más vieja primero (lo urgente arriba). Entregadas: la más reciente primero
-        // (para que Logística encuentre la que acaba de confirmar, igual que las HA recién completadas).
-        consulta = (filtro.Estado ?? "PorEntregar") == "PorEntregar"
-            ? consulta.OrderBy(r => r.Fecha).ThenBy(r => r.IdAsientoContableWO)
-            : consulta.OrderByDescending(r => r.FechaEntrega ?? r.FechaSincronizacion).ThenByDescending(r => r.IdAsientoContableWO);
-
-        var tamano = Math.Clamp(filtro.TamanoPagina ?? TamanoPaginaPorDefecto, 1, 100);
-        var total = await consulta.CountAsync(ct);
-        var pagina = Math.Max(1, filtro.Pagina);
-
-        var filas = await consulta
-            .Skip((pagina - 1) * tamano).Take(tamano)
+        var filas = await db.Remisiones.AsNoTracking()
+            .Where(r => r.Estado == EstadoRemision.PorEntregar
+                || (r.Estado == EstadoRemision.Entregada && r.FechaEntrega >= desdeEntregadas))
+            .OrderBy(r => r.FechaSincronizacion).ThenBy(r => r.IdAsientoContableWO)
             .Select(r => new
             {
                 r.Id, r.Numero, r.Fecha, r.Cliente, r.NitCliente, r.Ciudad, r.DireccionEntrega, r.CampoEntrega,
-                r.Vendedor, r.Cotizacion, r.OrdenCompraCliente, r.Estado, r.FechaEntrega,
+                r.Vendedor, r.Cotizacion, r.OrdenCompraCliente, Renglones = r.Renglones.Count, r.FechaSincronizacion,
+                r.Estado, r.FechaEntrega,
                 EntregadaPor = r.EntregadaPorUsuario != null ? r.EntregadaPorUsuario.Nombre : null,
-                r.VerificacionQR,
-                Renglones = r.Renglones.Count,
-                Soportes = r.Soportes.Count
+                r.VerificacionQR
             })
             .ToListAsync(ct);
 
-        var items = filas.Select(f => new RemisionResumenDto(
+        return filas.Select(f => new RemisionTableroDto(
             f.Id, f.Numero, f.Fecha, f.Cliente, f.NitCliente, f.Ciudad, f.DireccionEntrega, f.CampoEntrega,
-            f.Vendedor, f.Cotizacion, f.OrdenCompraCliente, f.Estado.ToString(), f.FechaEntrega, f.EntregadaPor,
-            f.VerificacionQR?.ToString(), f.Renglones, f.Soportes)).ToList();
-
-        return new RemisionesPaginaDto(items, total, pagina, tamano, porEntregar, entregadas, revisar, puedeGestionar);
+            f.Vendedor, f.Cotizacion, f.OrdenCompraCliente, f.Renglones, f.FechaSincronizacion, f.Estado.ToString(),
+            f.Estado == EstadoRemision.PorEntregar && (ahora - f.FechaSincronizacion).TotalHours >= umbral,
+            f.FechaEntrega, f.EntregadaPor, f.VerificacionQR?.ToString())).ToList();
     }
 
     public async Task<RemisionDetalleDto> ObtenerAsync(int id, int usuarioId, CancellationToken ct = default)
