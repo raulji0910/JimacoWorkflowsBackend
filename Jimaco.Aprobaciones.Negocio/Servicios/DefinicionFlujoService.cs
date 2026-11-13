@@ -23,8 +23,8 @@ public class DefinicionFlujoService(AppDbContext db) : IDefinicionFlujoService
 
     public async Task<DefinicionFlujoDto> CrearAsync(CrearDefinicionFlujoDto dto, CancellationToken ct = default)
     {
-        if (dto.Pasos.Count == 0)
-            throw new InvalidOperationException("El flujo debe tener al menos un paso.");
+        // Un flujo SIN pasos es válido desde 2026-11-13 (OC a crédito de Ferrealiados: "pasan derecho
+        // a logística sin ninguna aprobación"): el documento queda aprobado al llegar.
 
         var ordenesDuplicados = dto.Pasos.GroupBy(p => p.Orden).Any(g => g.Count() > 1);
         if (ordenesDuplicados)
