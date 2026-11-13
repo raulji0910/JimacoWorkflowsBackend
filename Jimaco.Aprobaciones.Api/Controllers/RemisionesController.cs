@@ -88,6 +88,48 @@ public class RemisionesController(IRemisionService remisionService) : Controller
                 string.IsNullOrWhiteSpace(qrLeido) ? null : qrLeido), ct));
     }
 
+    // ---- Facturación (fase 2, 2026-11-13) ----
+
+    /// <summary>El emisor adjunta UN archivo de un tipo documental (se revisa con IA si está encendida).</summary>
+    [HttpPost("{id:int}/documentos")]
+    [RequestSizeLimit(25_000_000)]
+    public async Task<ActionResult<RemisionDetalleDto>> AdjuntarDocumento(int id, [FromForm] int tipoDocumentoId, [FromForm] IFormFile archivo)
+    {
+        if (archivo is null || archivo.Length == 0)
+            return BadRequest(new { mensaje = "Escogé un archivo." });
+        await using var contenido = archivo.OpenReadStream();
+        // Sin el token de la petición (como confirmar entrega): lo que ya subió se guarda.
+        return Ok(await remisionService.AdjuntarDocumentoAsync(id, UsuarioActualId, tipoDocumentoId,
+            new ArchivoSoporteEntrega(archivo.FileName, archivo.ContentType, contenido, archivo.Length, null), CancellationToken.None));
+    }
+
+    [HttpDelete("{id:int}/documentos/{soporteId:int}")]
+    public async Task<ActionResult<RemisionDetalleDto>> EliminarDocumento(int id, int soporteId, CancellationToken ct) =>
+        Ok(await remisionService.EliminarDocumentoAsync(id, soporteId, UsuarioActualId, ct));
+
+    [HttpPost("{id:int}/enviar-a-facturacion")]
+    public async Task<ActionResult<RemisionDetalleDto>> EnviarAFacturacion(int id, EnviarAFacturacionDto dto) =>
+        Ok(await remisionService.EnviarAFacturacionAsync(id, UsuarioActualId, dto.Comentario, CancellationToken.None));
+
+    [HttpPost("{id:int}/devolver")]
+    public async Task<ActionResult<RemisionDetalleDto>> Devolver(int id, DevolverRemisionDto dto) =>
+        Ok(await remisionService.DevolverAsync(id, UsuarioActualId, dto.Comentario, CancellationToken.None));
+
+    [HttpGet("tipos-documento")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<IReadOnlyList<TipoDocumentoFacturacionDto>>> TiposDocumento(CancellationToken ct) =>
+        Ok(await remisionService.ListarTiposDocumentoAsync(ct));
+
+    [HttpPost("tipos-documento")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<TipoDocumentoFacturacionDto>> CrearTipoDocumento(GuardarTipoDocumentoFacturacionDto dto, CancellationToken ct) =>
+        Ok(await remisionService.GuardarTipoDocumentoAsync(null, dto, ct));
+
+    [HttpPut("tipos-documento/{tipoId:int}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<TipoDocumentoFacturacionDto>> ActualizarTipoDocumento(int tipoId, GuardarTipoDocumentoFacturacionDto dto, CancellationToken ct) =>
+        Ok(await remisionService.GuardarTipoDocumentoAsync(tipoId, dto, ct));
+
     [HttpGet("soportes/{soporteId:int}")]
     public async Task<IActionResult> DescargarSoporte(int soporteId, CancellationToken ct)
     {

@@ -11,7 +11,9 @@ public record RolDto(
     bool PuedeVerCuentasPorPagar,
     bool PuedePagarCuentas = false,
     bool PuedeGestionarEntregas = false,
-    bool PuedeVerEntregas = false);
+    bool PuedeVerEntregas = false,
+    bool PuedeDocumentarEntregas = false,
+    bool PuedeFacturarEntregas = false);
 
 public record CrearRolDto(
     string Nombre,
@@ -22,7 +24,9 @@ public record CrearRolDto(
     bool PuedeVerCuentasPorPagar = false,
     bool PuedePagarCuentas = false,
     bool PuedeGestionarEntregas = false,
-    bool PuedeVerEntregas = false);
+    bool PuedeVerEntregas = false,
+    bool PuedeDocumentarEntregas = false,
+    bool PuedeFacturarEntregas = false);
 
 public record ActualizarRolDto(
     string Nombre,
@@ -34,4 +38,6 @@ public record ActualizarRolDto(
     bool PuedeVerCuentasPorPagar = false,
     bool PuedePagarCuentas = false,
     bool PuedeGestionarEntregas = false,
-    bool PuedeVerEntregas = false);
+    bool PuedeVerEntregas = false,
+    bool PuedeDocumentarEntregas = false,
+    bool PuedeFacturarEntregas = false);

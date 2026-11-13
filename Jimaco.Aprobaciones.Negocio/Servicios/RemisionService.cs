@@ -6,12 +6,14 @@ using Jimaco.Aprobaciones.Negocio.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace Jimaco.Aprobaciones.Negocio.Servicios;
 
 /// <inheritdoc cref="IRemisionService"/>
-public class RemisionService(AppDbContext db, IAlmacenamientoArchivos almacenamiento, IRemisionPdfGenerador pdfGenerador,
-    IConfiguration configuration, TimeProvider reloj, IVerificadorSoporteEntrega verificadorIA, IMemoryCache cache) : IRemisionService
+public partial class RemisionService(AppDbContext db, IAlmacenamientoArchivos almacenamiento, IRemisionPdfGenerador pdfGenerador,
+    IConfiguration configuration, TimeProvider reloj, IVerificadorSoporteEntrega verificadorIA, IMemoryCache cache,
+    INotificacionService notificaciones, ILogger<RemisionService> logger) : IRemisionService
 {
     private const int MaxRemisionesPorPdf = 50;
 
@@ -103,14 +105,26 @@ public class RemisionService(AppDbContext db, IAlmacenamientoArchivos almacenami
 
     public async Task<IReadOnlyList<RemisionTableroDto>> ListarAsync(int usuarioId, CancellationToken ct = default)
     {
-        await ExigirVerAsync(usuarioId, ct);
+        var permisos = await PermisosAsync(usuarioId, ct);
+        if (!permisos.VerTodas && !(permisos.Documentar && permisos.UsuarioWO is not null))
+            throw new UnauthorizedAccessException("No tenés permiso para ver las entregas.");
         var ahora = reloj.GetUtcNow().UtcDateTime;
         var desdeEntregadas = ahora.AddDays(-DiasEntregadasVisibles);
         var umbral = HorasUmbralAlerta;
 
-        var filas = await db.Remisiones.AsNoTracking()
+        // Las entregadas salen a los 60 días... salvo que la facturación siga abierta (fase 2).
+        var consulta = db.Remisiones.AsNoTracking()
             .Where(r => r.Estado == EstadoRemision.PorEntregar
-                || (r.Estado == EstadoRemision.Entregada && r.FechaEntrega >= desdeEntregadas))
+                || (r.Estado == EstadoRemision.Entregada
+                    && (r.FechaEntrega >= desdeEntregadas || r.EstadoFacturacion != EstadoFacturacionRemision.Facturada)));
+        // El emisor sin "ver todas" solo ve las suyas (las que elaboró en WO).
+        if (!permisos.VerTodas)
+        {
+            var wo = permisos.UsuarioWO!.ToUpper();
+            consulta = consulta.Where(r => r.ElaboradoPorWO != null && r.ElaboradoPorWO.ToUpper() == wo);
+        }
+
+        var filas = await consulta
             .OrderBy(r => r.FechaSincronizacion).ThenBy(r => r.IdAsientoContableWO)
             .Select(r => new
             {
@@ -118,27 +132,38 @@ public class RemisionService(AppDbContext db, IAlmacenamientoArchivos almacenami
                 r.Vendedor, r.Cotizacion, r.OrdenCompraCliente, Renglones = r.Renglones.Count, r.FechaSincronizacion,
                 r.Estado, r.FechaEntrega,
                 EntregadaPor = r.EntregadaPorUsuario != null ? r.EntregadaPorUsuario.Nombre : null,
-                r.VerificacionQR
+                r.VerificacionQR, r.ElaboradoPorWO, r.EstadoFacturacion, r.FechaEnvioFacturacion,
+                TiposAdjuntos = r.Soportes.Where(x => x.Tipo == TipoSoporteRemision.DocumentoFacturacion)
+                    .Select(x => x.TipoDocumentoFacturacionId).ToList(),
+                ConAviso = r.Soportes.Count(x => x.Tipo == TipoSoporteRemision.DocumentoFacturacion && x.Aviso != null)
             })
             .ToListAsync(ct);
 
+        var tipos = await TiposActivosAsync(ct);
         return filas.Select(f => new RemisionTableroDto(
             f.Id, f.Numero, f.Fecha, f.Cliente, f.NitCliente, f.Ciudad, f.DireccionEntrega, f.CampoEntrega,
             f.Vendedor, f.Cotizacion, f.OrdenCompraCliente, f.Renglones, f.FechaSincronizacion, f.Estado.ToString(),
             f.Estado == EstadoRemision.PorEntregar && (ahora - f.FechaSincronizacion).TotalHours >= umbral,
-            f.FechaEntrega, f.EntregadaPor, f.VerificacionQR?.ToString())).ToList();
+            f.FechaEntrega, f.EntregadaPor, f.VerificacionQR?.ToString(),
+            f.EstadoFacturacion?.ToString(),
+            f.EstadoFacturacion is null ? 0 : TiposQueAplican(tipos, f.NitCliente)
+                .Count(t => t.Obligatorio && !f.TiposAdjuntos.Contains(t.Id)),
+            f.ConAviso,
+            permisos.EsEmisor(f.ElaboradoPorWO),
+            f.FechaEnvioFacturacion)).ToList();
     }
 
     public async Task<RemisionDetalleDto> ObtenerAsync(int id, int usuarioId, CancellationToken ct = default)
     {
-        var (_, puedeGestionar) = await ExigirVerAsync(usuarioId, ct);
+        var permisos = await PermisosAsync(usuarioId, ct);
         var remision = await CargarAsync(id, ct);
-        return ADetalle(remision, puedeGestionar);
+        ExigirVerRemision(permisos, remision);
+        return await ADetalleAsync(remision, permisos, ct);
     }
 
     public async Task<byte[]> GenerarPdfAsync(IReadOnlyList<int> ids, int usuarioId, CancellationToken ct = default)
     {
-        var (_, puedeGestionar) = await ExigirVerAsync(usuarioId, ct);
+        var permisos = await PermisosAsync(usuarioId, ct);
         var unicos = ids.Distinct().Take(MaxRemisionesPorPdf).ToList();
         if (unicos.Count == 0)
             throw new InvalidOperationException("Elegí al menos una remisión para imprimir.");
@@ -151,9 +176,14 @@ public class RemisionService(AppDbContext db, IAlmacenamientoArchivos almacenami
         if (remisiones.Count == 0)
             throw new KeyNotFoundException("No se encontraron las remisiones.");
 
+        foreach (var r in remisiones) ExigirVerRemision(permisos, r);
+
         // En el mismo orden en que se pidieron.
         var orden = unicos.Select((x, i) => (x, i)).ToDictionary(t => t.x, t => t.i);
-        return pdfGenerador.Generar(remisiones.OrderBy(r => orden[r.Id]).Select(r => ADetalle(r, puedeGestionar)).ToList());
+        var detalles = new List<RemisionDetalleDto>();
+        foreach (var r in remisiones.OrderBy(r => orden[r.Id]))
+            detalles.Add(await ADetalleAsync(r, permisos, ct));
+        return pdfGenerador.Generar(detalles);
     }
 
     public async Task<VerificacionSoporteDto> VerificarSoporteAsync(int id, int usuarioId, ArchivoSoporteEntrega archivo, CancellationToken ct = default)
@@ -220,8 +250,10 @@ public class RemisionService(AppDbContext db, IAlmacenamientoArchivos almacenami
         remision.EntregadaPorUsuarioId = usuarioId;
         remision.ObservacionEntrega = Recortar(observacion?.Trim(), 1000);
         remision.VerificacionQR = revisados.Any(r => r.Resultado.QrCoincide) ? VerificacionQRSoporte.Coincide : VerificacionQRSoporte.SinQR;
+        remision.EstadoFacturacion = EstadoFacturacionRemision.PendienteDocumentos;
         await db.SaveChangesAsync(ct);
 
+        await NotificarEntregaAlEmisorAsync(remision, usuarioId, ct);
         return await ObtenerAsync(id, usuarioId, ct);
     }
 
@@ -281,9 +313,11 @@ public class RemisionService(AppDbContext db, IAlmacenamientoArchivos almacenami
 
     public async Task<(Stream Contenido, string NombreArchivo, string? ContentType)> DescargarSoporteAsync(int soporteId, int usuarioId, CancellationToken ct = default)
     {
-        await ExigirVerAsync(usuarioId, ct);
-        var soporte = await db.SoportesRemision.AsNoTracking().FirstOrDefaultAsync(s => s.Id == soporteId, ct)
+        var permisos = await PermisosAsync(usuarioId, ct);
+        var soporte = await db.SoportesRemision.AsNoTracking().Include(s => s.Remision)
+            .FirstOrDefaultAsync(s => s.Id == soporteId, ct)
             ?? throw new KeyNotFoundException("Soporte no encontrado.");
+        ExigirVerRemision(permisos, soporte.Remision);
         var contenido = await almacenamiento.AbrirAsync(soporte.RutaArchivo, ct);
         return (contenido, soporte.NombreArchivo, soporte.ContentType);
     }
@@ -341,44 +375,87 @@ public class RemisionService(AppDbContext db, IAlmacenamientoArchivos almacenami
             .Include(r => r.Renglones)
             .Include(r => r.EntregadaPorUsuario)
             .Include(r => r.Soportes).ThenInclude(s => s.SubidoPorUsuario)
+            .Include(r => r.Soportes).ThenInclude(s => s.TipoDocumentoFacturacion)
+            .Include(r => r.EventosFacturacion).ThenInclude(e => e.Usuario)
             .FirstOrDefaultAsync(r => r.Id == id, ct)
         ?? throw new KeyNotFoundException("Remisión no encontrada.");
 
-    private async Task<(bool Ver, bool Gestionar)> PermisosAsync(int usuarioId, CancellationToken ct)
+    /// <summary>
+    /// Lo que puede hacer el usuario en Entregas. <c>VerTodas</c> = ve todas las remisiones (ver,
+    /// gestionar o facturar); el emisor (por su Usuario WO) siempre ve y documenta las suyas.
+    /// </summary>
+    private sealed record Permisos(int UsuarioId, bool VerTodas, bool Gestionar, bool Documentar, bool Facturar, string? UsuarioWO)
+    {
+        public bool EsEmisor(string? elaboradoPorWO) =>
+            !string.IsNullOrWhiteSpace(UsuarioWO) && !string.IsNullOrWhiteSpace(elaboradoPorWO)
+            && string.Equals(UsuarioWO.Trim(), elaboradoPorWO.Trim(), StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>Puede adjuntar documentos y enviar a contabilidad (el estado lo revisa quien llama).</summary>
+        public bool PuedeDocumentar(Remision r) => EsEmisor(r.ElaboradoPorWO) || (Documentar && VerTodas);
+    }
+
+    private async Task<Permisos> PermisosAsync(int usuarioId, CancellationToken ct)
     {
         var roles = await db.UsuarioRoles.AsNoTracking()
             .Where(ur => ur.UsuarioId == usuarioId && ur.Rol.Activo && ur.Usuario.Activo)
-            .Select(ur => new { ur.Rol.PuedeGestionarEntregas, ur.Rol.PuedeVerEntregas })
+            .Select(ur => new { ur.Rol.PuedeGestionarEntregas, ur.Rol.PuedeVerEntregas, ur.Rol.PuedeDocumentarEntregas, ur.Rol.PuedeFacturarEntregas })
             .ToListAsync(ct);
+        var usuarioWO = await db.Usuarios.AsNoTracking().Where(u => u.Id == usuarioId && u.Activo)
+            .Select(u => u.UsuarioWO).FirstOrDefaultAsync(ct);
         var gestionar = roles.Any(r => r.PuedeGestionarEntregas);
-        return (gestionar || roles.Any(r => r.PuedeVerEntregas), gestionar);
+        var facturar = roles.Any(r => r.PuedeFacturarEntregas);
+        return new Permisos(usuarioId, gestionar || facturar || roles.Any(r => r.PuedeVerEntregas), gestionar,
+            roles.Any(r => r.PuedeDocumentarEntregas), facturar, string.IsNullOrWhiteSpace(usuarioWO) ? null : usuarioWO.Trim());
     }
 
-    private async Task<(bool Ver, bool Gestionar)> ExigirVerAsync(int usuarioId, CancellationToken ct)
+    private static void ExigirVerRemision(Permisos permisos, Remision remision)
     {
-        var permisos = await PermisosAsync(usuarioId, ct);
-        if (!permisos.Ver)
-            throw new UnauthorizedAccessException("No tenés permiso para ver las entregas.");
-        return permisos;
+        if (!permisos.VerTodas && !permisos.EsEmisor(remision.ElaboradoPorWO))
+            throw new UnauthorizedAccessException("No tenés permiso para ver esta remisión.");
     }
 
     private async Task ExigirGestionarAsync(int usuarioId, CancellationToken ct)
     {
-        var (_, gestionar) = await PermisosAsync(usuarioId, ct);
-        if (!gestionar)
+        if (!(await PermisosAsync(usuarioId, ct)).Gestionar)
             throw new UnauthorizedAccessException("No tenés permiso para confirmar entregas.");
     }
 
-    private static RemisionDetalleDto ADetalle(Remision r, bool puedeGestionar) => new(
-        r.Id, r.Prefijo, r.Numero, r.Fecha, r.Cliente, r.NitCliente, r.Direccion, r.Ciudad, r.Telefono,
-        r.Vendedor, r.ElaboradoPorWO, r.FormaDePago, r.DireccionEntrega, r.CampoEntrega, r.OrdenCompraCliente,
-        r.Cotizacion, r.Nota, r.Estado.ToString(), r.FechaEntrega, r.EntregadaPorUsuario?.Nombre,
-        r.ObservacionEntrega, r.VerificacionQR?.ToString(), CodigoQR(r),
-        r.Renglones.OrderBy(x => x.Orden).Select(x => new RenglonRemisionDto(x.Orden, x.Codigo, x.Descripcion, x.Cantidad, x.UnidadMedida)).ToList(),
-        r.Soportes.OrderBy(s => s.FechaCarga).Select(s => new SoporteRemisionDto(
-            s.Id, s.Tipo.ToString(), s.NombreArchivo, s.ContentType, s.TamanoBytes, s.QrLeido,
-            s.SubidoPorUsuario?.Nombre ?? "", s.FechaCarga, s.Valido, s.IaNumeroLeido, s.IaHayFirma, s.IaObservacion, s.IaHaySello)).ToList(),
-        puedeGestionar);
+    private async Task<RemisionDetalleDto> ADetalleAsync(Remision r, Permisos permisos, CancellationToken ct)
+    {
+        var tipos = await TiposActivosAsync(ct);
+        var docs = r.Soportes.Where(s => s.Tipo == TipoSoporteRemision.DocumentoFacturacion).ToList();
+        var requeridos = r.Estado == EstadoRemision.Entregada
+            ? TiposQueAplican(tipos, r.NitCliente)
+                .Select(t => new DocumentoRequeridoDto(t.Id, t.Nombre, t.Descripcion, t.Obligatorio, docs.Any(d => d.TipoDocumentoFacturacionId == t.Id)))
+                .ToList()
+            : [];
+        var abierta = r.Estado == EstadoRemision.Entregada
+            && r.EstadoFacturacion is EstadoFacturacionRemision.PendienteDocumentos or EstadoFacturacionRemision.Devuelta;
+        var puedeAdjuntar = abierta && permisos.PuedeDocumentar(r);
+        var emisor = await NombresEmisorAsync(r.ElaboradoPorWO, ct);
+
+        return new RemisionDetalleDto(
+            r.Id, r.Prefijo, r.Numero, r.Fecha, r.Cliente, r.NitCliente, r.Direccion, r.Ciudad, r.Telefono,
+            r.Vendedor, r.ElaboradoPorWO, r.FormaDePago, r.DireccionEntrega, r.CampoEntrega, r.OrdenCompraCliente,
+            r.Cotizacion, r.Nota, r.Estado.ToString(), r.FechaEntrega, r.EntregadaPorUsuario?.Nombre,
+            r.ObservacionEntrega, r.VerificacionQR?.ToString(), CodigoQR(r),
+            r.Renglones.OrderBy(x => x.Orden).Select(x => new RenglonRemisionDto(x.Orden, x.Codigo, x.Descripcion, x.Cantidad, x.UnidadMedida)).ToList(),
+            r.Soportes.OrderBy(s => s.FechaCarga).Select(s => new SoporteRemisionDto(
+                s.Id, s.Tipo.ToString(), s.NombreArchivo, s.ContentType, s.TamanoBytes, s.QrLeido,
+                s.SubidoPorUsuario?.Nombre ?? "", s.FechaCarga, s.Valido, s.IaNumeroLeido, s.IaHayFirma, s.IaObservacion, s.IaHaySello,
+                s.TipoDocumentoFacturacionId, s.TipoDocumentoFacturacion?.Nombre, s.IaTipoDetectado, s.Aviso,
+                puedeAdjuntar && s.Tipo == TipoSoporteRemision.DocumentoFacturacion)).ToList(),
+            permisos.Gestionar,
+            r.EstadoFacturacion?.ToString(),
+            requeridos,
+            r.EventosFacturacion.OrderBy(e => e.Fecha)
+                .Select(e => new EventoFacturacionDto(e.Accion.ToString(), e.Comentario, e.Usuario?.Nombre ?? "", e.Fecha)).ToList(),
+            emisor,
+            puedeAdjuntar,
+            puedeAdjuntar,
+            permisos.Facturar && r.EstadoFacturacion == EstadoFacturacionRemision.EnFacturacion,
+            r.FechaEnvioFacturacion);
+    }
 
     private static string? Recortar(string? s, int max) =>
         string.IsNullOrWhiteSpace(s) ? null : (s.Length <= max ? s : s[..max]);

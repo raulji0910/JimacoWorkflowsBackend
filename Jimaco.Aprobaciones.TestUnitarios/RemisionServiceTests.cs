@@ -43,7 +43,9 @@ public class RemisionServiceTests
 
     private RemisionService Servicio() => new(db, almacenamiento.Object, new RemisionPdfGenerador(),
         Mock.Of<IConfiguration>(c => c["Entregas:HorasUmbralAlerta"] == "48"),
-        reloj, ia.Object, cache);
+        reloj, ia.Object, cache, notificaciones.Object, Microsoft.Extensions.Logging.Abstractions.NullLogger<RemisionService>.Instance);
+
+    private readonly Mock<INotificacionService> notificaciones = new();
 
     /// <summary>Lo que hace el administrador en la página: encender la revisión con IA.</summary>
     private void EncenderIA()
@@ -336,8 +338,13 @@ public class RemisionServiceTests
         Assert.True(despues.Single(r => r.Numero == "29637").EnAlerta);
         Assert.False(despues.Single(r => r.Numero == "29635").EnAlerta);
 
-        // Pasados 60 días, las entregadas ya no se traen (la por entregar sí).
+        // Pasados 60 días, la entregada sigue mientras su facturación esté abierta (fase 2)...
         reloj.Ahora = reloj.Ahora.AddDays(61);
+        Assert.Equal(["29635", "29636", "29637"], (await Servicio().ListarAsync(logistica)).Select(r => r.Numero).Order());
+
+        // ...y sale cuando ya está facturada.
+        (await db.Remisiones.SingleAsync(r => r.Numero == "29635")).EstadoFacturacion = EstadoFacturacionRemision.Facturada;
+        await db.SaveChangesAsync();
         Assert.Equal(["29636", "29637"], (await Servicio().ListarAsync(logistica)).Select(r => r.Numero).Order());
     }
 

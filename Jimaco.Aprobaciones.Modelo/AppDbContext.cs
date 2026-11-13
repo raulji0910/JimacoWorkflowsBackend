@@ -48,6 +48,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<RenglonRemision> RenglonesRemision => Set<RenglonRemision>();
     public DbSet<SoporteRemision> SoportesRemision => Set<SoporteRemision>();
     public DbSet<ConfiguracionEntregas> ConfiguracionesEntregas => Set<ConfiguracionEntregas>();
+    public DbSet<TipoDocumentoFacturacion> TiposDocumentoFacturacion => Set<TipoDocumentoFacturacion>();
+    public DbSet<EventoFacturacionRemision> EventosFacturacionRemision => Set<EventoFacturacionRemision>();
     public DbSet<TerceroWO> TercerosWO => Set<TerceroWO>();
     public DbSet<ComprobanteEgreso> ComprobantesEgreso => Set<ComprobanteEgreso>();
     public DbSet<RenglonComprobanteEgreso> RenglonesComprobanteEgreso => Set<RenglonComprobanteEgreso>();
@@ -321,6 +323,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasIndex(r => r.Estado);
             e.Property(r => r.FechaSincronizacion).HasConversion(ConversorFechaUtc);
             e.Property(r => r.FechaEntrega).HasConversion(ConversorFechaUtcNullable);
+            e.Property(r => r.FechaEnvioFacturacion).HasConversion(ConversorFechaUtcNullable);
+            e.HasIndex(r => r.EstadoFacturacion);
+            e.HasIndex(r => r.ElaboradoPorWO);
             e.HasOne(r => r.EntregadaPorUsuario).WithMany().HasForeignKey(r => r.EntregadaPorUsuarioId)
                 .OnDelete(DeleteBehavior.NoAction);
             e.HasMany(r => r.Renglones).WithOne(x => x.Remision).HasForeignKey(x => x.RemisionId)
@@ -336,6 +341,37 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.FechaCarga).HasConversion(ConversorFechaUtc);
             e.HasOne(x => x.SubidoPorUsuario).WithMany().HasForeignKey(x => x.SubidoPorUsuarioId)
                 .OnDelete(DeleteBehavior.NoAction);
+            e.HasOne(x => x.TipoDocumentoFacturacion).WithMany().HasForeignKey(x => x.TipoDocumentoFacturacionId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<TipoDocumentoFacturacion>(e =>
+        {
+            // Pedido del usuario 2026-11-13: OC y entrada de almacén obligatorias para todos; proforma
+            // solo para PARES (900268747-9) y VERANO (900331322).
+            e.HasData(
+                new TipoDocumentoFacturacion
+                {
+                    Id = 1, Nombre = "Orden de Compra", Orden = 1, Obligatorio = true, Activo = true,
+                    Descripcion = "Orden de compra que el cliente le emitió a Jimaco (número de OC, ítems, cantidades)."
+                },
+                new TipoDocumentoFacturacion
+                {
+                    Id = 2, Nombre = "Entrada de almacén", Orden = 2, Obligatorio = true, Activo = true,
+                    Descripcion = "Entrada de almacén / recibo de mercancía del cliente que constata que recibió lo entregado por Jimaco."
+                },
+                new TipoDocumentoFacturacion
+                {
+                    Id = 3, Nombre = "Proforma", Orden = 3, Obligatorio = true, Activo = true, NitsClientes = "900268747;900331322",
+                    Descripcion = "Factura proforma del pedido."
+                });
+        });
+
+        modelBuilder.Entity<EventoFacturacionRemision>(e =>
+        {
+            e.Property(x => x.Fecha).HasConversion(ConversorFechaUtc);
+            e.HasOne(x => x.Remision).WithMany(r => r.EventosFacturacion).HasForeignKey(x => x.RemisionId);
+            e.HasOne(x => x.Usuario).WithMany().HasForeignKey(x => x.UsuarioId).OnDelete(DeleteBehavior.NoAction);
         });
 
         modelBuilder.Entity<ConfiguracionEntregas>(e =>

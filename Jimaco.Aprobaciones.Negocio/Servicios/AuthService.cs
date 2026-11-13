@@ -24,10 +24,13 @@ public class AuthService(AppDbContext db, IJwtGenerador jwtGenerador) : IAuthSer
         var puedeVerCuentasPorPagar = rolesActivos.Any(r => r.PuedeVerCuentasPorPagar);
         var puedePagarCuentas = rolesActivos.Any(r => r.PuedePagarCuentas);
         var puedeGestionarEntregas = rolesActivos.Any(r => r.PuedeGestionarEntregas);
-        var puedeVerEntregas = puedeGestionarEntregas || rolesActivos.Any(r => r.PuedeVerEntregas);
+        var puedeDocumentarEntregas = rolesActivos.Any(r => r.PuedeDocumentarEntregas);
+        var puedeFacturarEntregas = rolesActivos.Any(r => r.PuedeFacturarEntregas);
+        var puedeVerEntregas = puedeGestionarEntregas || puedeDocumentarEntregas || puedeFacturarEntregas
+            || rolesActivos.Any(r => r.PuedeVerEntregas);
         var token = jwtGenerador.GenerarToken(usuario, roles);
         return new LoginResponseDto(token, usuario.Nombre, usuario.Email, roles, puedeDevolverCualquierDocumento,
             puedeGestionarAlistamiento, puedeVerAlistamiento, puedeVerCuentasPorPagar, puedePagarCuentas,
-            puedeGestionarEntregas, puedeVerEntregas);
+            puedeGestionarEntregas, puedeVerEntregas, puedeDocumentarEntregas, puedeFacturarEntregas);
     }
 }

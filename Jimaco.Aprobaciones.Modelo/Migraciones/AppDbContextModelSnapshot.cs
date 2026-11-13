@@ -510,6 +510,39 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.ToTable("DocumentosVinculados");
                 });
 
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.EventoFacturacionRemision", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Accion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Comentario")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime>("Fecha")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RemisionId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UsuarioId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RemisionId");
+
+                    b.HasIndex("UsuarioId");
+
+                    b.ToTable("EventosFacturacionRemision");
+                });
+
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.FacturaPagoProveedor", b =>
                 {
                     b.Property<int>("Id")
@@ -1156,10 +1189,16 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Property<int>("Estado")
                         .HasColumnType("int");
 
+                    b.Property<int?>("EstadoFacturacion")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("Fecha")
                         .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("FechaEntrega")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaEnvioFacturacion")
                         .HasColumnType("datetime2");
 
                     b.Property<DateTime>("FechaSincronizacion")
@@ -1211,9 +1250,13 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ElaboradoPorWO");
+
                     b.HasIndex("EntregadaPorUsuarioId");
 
                     b.HasIndex("Estado");
+
+                    b.HasIndex("EstadoFacturacion");
 
                     b.HasIndex("IdAsientoContableWO")
                         .IsUnique();
@@ -1463,6 +1506,12 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Property<bool>("PuedeDevolverCualquierDocumento")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("PuedeDocumentarEntregas")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("PuedeFacturarEntregas")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("PuedeGestionarAlistamiento")
                         .HasColumnType("bit");
 
@@ -1496,6 +1545,8 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                             Descripcion = "Administra usuarios, roles, tipos de documento y flujos.",
                             Nombre = "Admin",
                             PuedeDevolverCualquierDocumento = false,
+                            PuedeDocumentarEntregas = false,
+                            PuedeFacturarEntregas = false,
                             PuedeGestionarAlistamiento = false,
                             PuedeGestionarEntregas = false,
                             PuedePagarCuentas = false,
@@ -1538,6 +1589,10 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("Aviso")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<string>("ContentType")
                         .HasMaxLength(150)
                         .HasColumnType("nvarchar(150)");
@@ -1558,6 +1613,10 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Property<string>("IaObservacion")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("IaTipoDetectado")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("NombreArchivo")
                         .IsRequired()
@@ -1585,6 +1644,9 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Property<int>("Tipo")
                         .HasColumnType("int");
 
+                    b.Property<int?>("TipoDocumentoFacturacionId")
+                        .HasColumnType("int");
+
                     b.Property<bool>("Valido")
                         .HasColumnType("bit");
 
@@ -1593,6 +1655,8 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.HasIndex("RemisionId");
 
                     b.HasIndex("SubidoPorUsuarioId");
+
+                    b.HasIndex("TipoDocumentoFacturacionId");
 
                     b.ToTable("SoportesRemision");
                 });
@@ -1659,6 +1723,71 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                         .IsUnique();
 
                     b.ToTable("TiposDocumento");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.TipoDocumentoFacturacion", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Descripcion")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("NitsClientes")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool>("Obligatorio")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Orden")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("TiposDocumentoFacturacion");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Activo = true,
+                            Descripcion = "Orden de compra que el cliente le emitió a Jimaco (número de OC, ítems, cantidades).",
+                            Nombre = "Orden de Compra",
+                            Obligatorio = true,
+                            Orden = 1
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Activo = true,
+                            Descripcion = "Entrada de almacén / recibo de mercancía del cliente que constata que recibió lo entregado por Jimaco.",
+                            Nombre = "Entrada de almacén",
+                            Obligatorio = true,
+                            Orden = 2
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Activo = true,
+                            Descripcion = "Factura proforma del pedido.",
+                            NitsClientes = "900268747;900331322",
+                            Nombre = "Proforma",
+                            Obligatorio = true,
+                            Orden = 3
+                        });
                 });
 
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.TipoGiro", b =>
@@ -2625,6 +2754,25 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Navigation("InstanciaDocumento");
                 });
 
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.EventoFacturacionRemision", b =>
+                {
+                    b.HasOne("Jimaco.Aprobaciones.Modelo.Entidades.Remision", "Remision")
+                        .WithMany("EventosFacturacion")
+                        .HasForeignKey("RemisionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Jimaco.Aprobaciones.Modelo.Entidades.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Remision");
+
+                    b.Navigation("Usuario");
+                });
+
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.FacturaPagoProveedor", b =>
                 {
                     b.HasOne("Jimaco.Aprobaciones.Modelo.Entidades.InstanciaDocumento", "InstanciaDocumento")
@@ -2879,9 +3027,16 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
+                    b.HasOne("Jimaco.Aprobaciones.Modelo.Entidades.TipoDocumentoFacturacion", "TipoDocumentoFacturacion")
+                        .WithMany()
+                        .HasForeignKey("TipoDocumentoFacturacionId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.Navigation("Remision");
 
                     b.Navigation("SubidoPorUsuario");
+
+                    b.Navigation("TipoDocumentoFacturacion");
                 });
 
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.UsuarioRol", b =>
@@ -2956,6 +3111,8 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
 
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.Remision", b =>
                 {
+                    b.Navigation("EventosFacturacion");
+
                     b.Navigation("Renglones");
 
                     b.Navigation("Soportes");

@@ -18,4 +18,8 @@ public record LoginResponseDto(string Token, string Nombre, string Email, IReadO
     // Entregas (Remisiones) — ver Rol.PuedeGestionarEntregas/PuedeVerEntregas. Cualquiera de los
     // dos muestra el dashboard; solo el primero habilita imprimir/confirmar entregas.
     bool PuedeGestionarEntregas = false,
-    bool PuedeVerEntregas = false);
+    bool PuedeVerEntregas = false,
+    // Fase 2 (2026-11-13): emisor que adjunta documentos para facturar / contable que factura.
+    // PuedeVerEntregas ya viene en true si tiene cualquiera de los cuatro (muestra el menú).
+    bool PuedeDocumentarEntregas = false,
+    bool PuedeFacturarEntregas = false);

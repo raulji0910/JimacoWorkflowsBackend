@@ -56,7 +56,16 @@ public record RemisionTableroDto(
     bool EnAlerta,
     DateTime? FechaEntrega,
     string? EntregadaPor,
-    string? VerificacionQR);
+    string? VerificacionQR,
+    // ---- Facturación (fase 2, 2026-11-13) ----
+    string? EstadoFacturacion = null,
+    /// <summary>Tipos documentales obligatorios que todavía no tienen archivo.</summary>
+    int DocumentosFaltantes = 0,
+    /// <summary>Documentos adjuntos con advertencia de la IA.</summary>
+    int DocumentosConAviso = 0,
+    /// <summary>La elaboró en WO el usuario que consulta (es el emisor).</summary>
+    bool EsMia = false,
+    DateTime? FechaEnvioFacturacion = null);
 
 /// <summary>
 /// Configuración de Entregas para el administrador. <c>IaConClave</c> = el servidor tiene la clave de
@@ -82,7 +91,13 @@ public record SoporteRemisionDto(
     string? IaNumeroLeido = null,
     bool? IaHayFirma = null,
     string? IaObservacion = null,
-    bool? IaHaySello = null);
+    bool? IaHaySello = null,
+    // ---- Documentos para facturar (fase 2) ----
+    int? TipoDocumentoFacturacionId = null,
+    string? TipoDocumentoFacturacion = null,
+    string? IaTipoDetectado = null,
+    string? Aviso = null,
+    bool PuedeEliminar = false);
 
 public record RemisionDetalleDto(
     int Id,
@@ -111,7 +126,31 @@ public record RemisionDetalleDto(
     string CodigoQR,
     IReadOnlyList<RenglonRemisionDto> Renglones,
     IReadOnlyList<SoporteRemisionDto> Soportes,
-    bool PuedeGestionar);
+    bool PuedeGestionar,
+    // ---- Facturación (fase 2, 2026-11-13) ----
+    string? EstadoFacturacion = null,
+    /// <summary>Tipos documentales que aplican a este cliente (con si ya tienen archivo).</summary>
+    IReadOnlyList<DocumentoRequeridoDto>? DocumentosRequeridos = null,
+    IReadOnlyList<EventoFacturacionDto>? Historial = null,
+    /// <summary>Usuario(s) del sistema que la elaboraron en WO (por Usuario WO); null = nadie configurado.</summary>
+    string? Emisor = null,
+    bool PuedeAdjuntarDocumentos = false,
+    bool PuedeEnviarAFacturacion = false,
+    bool PuedeDevolver = false,
+    DateTime? FechaEnvioFacturacion = null);
+
+public record DocumentoRequeridoDto(int TipoId, string Nombre, string? Descripcion, bool Obligatorio, bool Completo);
+
+public record EventoFacturacionDto(string Accion, string? Comentario, string Usuario, DateTime Fecha);
+
+public record EnviarAFacturacionDto(string? Comentario);
+
+public record DevolverRemisionDto(string Comentario);
+
+/// <summary>Administración → tipos documentales para facturar. NitsClientes vacío = todos los clientes.</summary>
+public record TipoDocumentoFacturacionDto(int Id, string Nombre, string? Descripcion, bool Obligatorio, string? NitsClientes, int Orden, bool Activo);
+
+public record GuardarTipoDocumentoFacturacionDto(string Nombre, string? Descripcion, bool Obligatorio, string? NitsClientes, int Orden, bool Activo);
 
 /// <summary>Un archivo del soporte de entrega, ya leído (contenido) junto con el QR que encontró el navegador.</summary>
 public record ArchivoSoporteEntrega(string NombreArchivo, string? ContentType, Stream Contenido, long TamanoBytes, string? QrLeido);

@@ -59,6 +59,13 @@ public class Remision
     /// <summary>Resultado de leer el QR del soporte de entrega (ver <see cref="VerificacionQRSoporte"/>).</summary>
     public VerificacionQRSoporte? VerificacionQR { get; set; }
 
+    // ---- Facturación (fase 2, 2026-11-13) ----
+    /// <summary>Null mientras no se ha entregado; al confirmar la entrega pasa a PendienteDocumentos.</summary>
+    public EstadoFacturacionRemision? EstadoFacturacion { get; set; }
+    public DateTime? FechaEnvioFacturacion { get; set; }
+
+    public ICollection<EventoFacturacionRemision> EventosFacturacion { get; set; } = [];
+
     public ICollection<RenglonRemision> Renglones { get; set; } = [];
 
     /// <summary>
@@ -88,6 +95,57 @@ public enum VerificacionQRSoporte
     NoCoincide = 1,
     /// <summary>No se pudo leer ningún QR (foto borrosa, impresa desde WO, escaneo sin QR...).</summary>
     SinQR = 2
+}
+
+/// <summary>
+/// Facturación de una remisión entregada (2026-11-13). El emisor adjunta los documentos (OC, entrada
+/// de almacén, proforma...) y la envía a contabilidad; el contable puede devolverla. "Facturada" se
+/// cerrará cuando se conozca cómo WO liga la factura con la remisión (una factura puede ligar varias).
+/// </summary>
+public enum EstadoFacturacionRemision
+{
+    PendienteDocumentos = 0,
+    EnFacturacion = 1,
+    Devuelta = 2,
+    Facturada = 3
+}
+
+public enum AccionFacturacionRemision
+{
+    EnviadaAFacturacion = 0,
+    Devuelta = 1,
+    Facturada = 2
+}
+
+/// <summary>Bitácora de idas y vueltas entre el emisor y contabilidad.</summary>
+public class EventoFacturacionRemision
+{
+    public int Id { get; set; }
+    public int RemisionId { get; set; }
+    public Remision Remision { get; set; } = null!;
+    public AccionFacturacionRemision Accion { get; set; }
+    [MaxLength(1000)] public string? Comentario { get; set; }
+    public int UsuarioId { get; set; }
+    public Usuario Usuario { get; set; } = null!;
+    public DateTime Fecha { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Tipo documental que el emisor debe adjuntar para facturar (2026-11-13) — lo administra el admin en
+/// "Config. de entregas". Sin NITs aplica a todos los clientes; con NITs, solo a esos (ej. Proforma
+/// solo para PARES 900268747 y VERANO 900331322).
+/// </summary>
+public class TipoDocumentoFacturacion
+{
+    public int Id { get; set; }
+    [MaxLength(100)] public required string Nombre { get; set; }
+    /// <summary>Qué es este documento, para que la IA lo reconozca (y como ayuda en pantalla).</summary>
+    [MaxLength(500)] public string? Descripcion { get; set; }
+    public bool Obligatorio { get; set; } = true;
+    /// <summary>NITs (sin dígito de verificación) separados por ";". Vacío = todos los clientes.</summary>
+    [MaxLength(500)] public string? NitsClientes { get; set; }
+    public int Orden { get; set; }
+    public bool Activo { get; set; } = true;
 }
 
 public class RenglonRemision
@@ -136,6 +194,15 @@ public class SoporteRemision
 
     /// <summary>Este archivo cumplió la regla (es esta remisión y tiene la firma o el sello del cliente).</summary>
     public bool Valido { get; set; }
+
+    // ---- Documentos para facturar (fase 2) ----
+    /// <summary>Qué tipo documental es (solo para Tipo = DocumentoFacturacion).</summary>
+    public int? TipoDocumentoFacturacionId { get; set; }
+    public TipoDocumentoFacturacion? TipoDocumentoFacturacion { get; set; }
+    /// <summary>Qué documento cree la IA que es (ej. "Factura", "Orden de compra").</summary>
+    [MaxLength(100)] public string? IaTipoDetectado { get; set; }
+    /// <summary>Advertencia (no bloquea): la IA no ve que sea el documento pedido, o no coincide la OC/cliente.</summary>
+    [MaxLength(500)] public string? Aviso { get; set; }
 
     public int SubidoPorUsuarioId { get; set; }
     public Usuario SubidoPorUsuario { get; set; } = null!;

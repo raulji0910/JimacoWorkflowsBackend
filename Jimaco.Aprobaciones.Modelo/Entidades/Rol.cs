@@ -72,6 +72,19 @@ public class Rol
     /// <summary>Solo consultar el estado de las entregas (sin confirmar ni adjuntar) — supervisión.</summary>
     public bool PuedeVerEntregas { get; set; }
 
+    /// <summary>
+    /// Entregas fase 2 (2026-11-13): el emisor de la remisión (vendedora) ve SUS remisiones (las que
+    /// elaboró en WO = su <see cref="Usuario.UsuarioWO"/>), adjunta los documentos para facturar y
+    /// las envía a contabilidad. Con <see cref="PuedeVerEntregas"/> además, puede hacerlo en todas.
+    /// </summary>
+    public bool PuedeDocumentarEntregas { get; set; }
+
+    /// <summary>
+    /// Entregas fase 2: el contable — ve las remisiones enviadas a facturación con sus documentos, le
+    /// llega el correo y puede devolverlas al emisor con un comentario.
+    /// </summary>
+    public bool PuedeFacturarEntregas { get; set; }
+
     public ICollection<UsuarioRol> UsuarioRoles { get; set; } = [];
     public ICollection<PasoFlujoRol> PasoFlujoRoles { get; set; } = [];
 }

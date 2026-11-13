@@ -8,12 +8,16 @@ using Microsoft.Extensions.Logging;
 namespace Jimaco.Aprobaciones.Negocio.Servicios;
 
 /// <summary>
-/// Revisa con Claude (visión) la foto o el escaneo de una remisión firmada (2026-11-12, pedido del
-/// usuario): qué número de remisión se lee, si hay firma manuscrita o sello del cliente (cualquiera
-/// de los dos vale) y si es legible.
+/// Revisa con Claude (visión) lo que se adjunta en Entregas:
+/// <list type="bullet">
+/// <item>La foto o el escaneo de una remisión entregada (2026-11-12): qué número de remisión se lee, si
+/// hay firma manuscrita o sello del cliente (cualquiera de los dos vale) y si es legible.</item>
+/// <item>Los documentos para facturar (2026-11-13): si el archivo es el tipo documental pedido (OC,
+/// entrada de almacén, proforma...), si es del cliente y qué número de OC trae.</item>
+/// </list>
 /// Activo solo si hay clave (<c>ANTHROPIC_API_KEY</c> o <c>Anthropic:ApiKey</c>) y
-/// <c>Entregas:VerificacionIA:Activo</c> no es false. Nunca lanza: un error técnico vuelve como
-/// <see cref="ResultadoVerificacionIA.Analizado"/> = false con el motivo.
+/// <c>Entregas:VerificacionIA:Activo</c> no es false (además, el admin la enciende en la página).
+/// Nunca lanza: un error técnico vuelve como "no analizado" con el motivo.
 /// </summary>
 public class VerificadorSoporteEntregaIA : IVerificadorSoporteEntrega
 {
@@ -21,7 +25,7 @@ public class VerificadorSoporteEntregaIA : IVerificadorSoporteEntrega
 
     private static readonly string[] ImagenesSoportadas = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
-    private const string Instrucciones = """
+    private const string InstruccionesEntrega = """
         Revisas el soporte de entrega de una remisión de FERRETERIA INDUSTRIAL JIMACO: una foto o un
         escaneo de la hoja "REMISION No." que el conductor le hace firmar al cliente al entregar.
         Respondé solo con lo que se ve en la imagen, sin suponer nada:
@@ -39,6 +43,23 @@ public class VerificadorSoporteEntregaIA : IVerificadorSoporteEntrega
         - confianza: "alta", "media" o "baja".
         - observacion: una frase corta en español para el operario de logística (qué falta o qué se ve;
           si hay sello, decí de quién es si se lee).
+        """;
+
+    private const string InstruccionesDocumento = """
+        Revisas un documento que una vendedora de FERRETERIA INDUSTRIAL JIMACO (el proveedor) adjunta
+        para que contabilidad pueda facturar una remisión ya entregada a un cliente. Te digo qué tipo de
+        documento se pidió y los datos de la remisión. Respondé solo con lo que se ve en el documento,
+        sin suponer nada:
+        - tipo_documento_detectado: qué documento es, en pocas palabras (ej. "Orden de compra",
+          "Entrada de almacén", "Proforma", "Factura", "Remisión", "Cotización", "Foto sin documento").
+        - es_tipo_esperado: true si el documento es del tipo pedido (aunque el formato del cliente sea
+          distinto o tenga otro nombre equivalente, p. ej. "Recibo de mercancía" = entrada de almacén,
+          "Pedido de compra" = orden de compra).
+        - cliente_coincide: true si el documento es de la empresa del cliente indicado (por nombre o NIT),
+          false si es claramente de otra empresa, null si no se puede saber.
+        - numero_orden_compra: el número de orden de compra / pedido que aparezca en el documento, o null.
+        - legible: false si está tan borroso, oscuro o cortado que no se puede revisar.
+        - observacion: una frase corta en español para la vendedora (qué es y, si algo no cuadra, qué).
         """;
 
     private readonly IConfiguration configuration;
@@ -61,8 +82,56 @@ public class VerificadorSoporteEntregaIA : IVerificadorSoporteEntrega
 
     public async Task<ResultadoVerificacionIA> VerificarAsync(byte[] contenido, string? contentType, CancellationToken ct = default)
     {
+        var (datos, error) = await PreguntarAsync<RespuestaEntrega>(contenido, contentType, InstruccionesEntrega,
+            "Revisá este soporte de entrega.", EsquemaEntrega(), ct);
+        if (datos is null)
+            return ResultadoVerificacionIA.NoAnalizado(error!);
+
+        return new ResultadoVerificacionIA(
+            Analizado: true,
+            NumeroLeido: string.IsNullOrWhiteSpace(datos.numero_remision) ? null : new string(datos.numero_remision.Where(char.IsDigit).ToArray()),
+            EsRemisionJimaco: datos.es_remision_jimaco,
+            HayFirma: datos.hay_firma_cliente,
+            HayNombreOCedula: datos.hay_nombre_o_cedula,
+            Legible: datos.legible,
+            Confianza: datos.confianza ?? "baja",
+            Observacion: datos.observacion,
+            Error: null,
+            HaySello: datos.hay_sello_cliente);
+    }
+
+    public async Task<ResultadoDocumentoFacturacionIA> VerificarDocumentoAsync(byte[] contenido, string? contentType,
+        ContextoDocumentoFacturacion contexto, CancellationToken ct = default)
+    {
+        var pregunta = $"""
+            Documento pedido: {contexto.TipoEsperado}{(string.IsNullOrWhiteSpace(contexto.DescripcionTipo) ? "" : $" ({contexto.DescripcionTipo})")}.
+            Remisión de Jimaco: {contexto.NumeroRemision}.
+            Cliente: {contexto.Cliente ?? "(sin dato)"}{(string.IsNullOrWhiteSpace(contexto.NitCliente) ? "" : $", NIT {contexto.NitCliente}")}.
+            Orden de compra del cliente según la remisión: {(string.IsNullOrWhiteSpace(contexto.OrdenCompraCliente) ? "(sin dato)" : contexto.OrdenCompraCliente)}.
+            Revisá el documento adjunto.
+            """;
+        var (datos, error) = await PreguntarAsync<RespuestaDocumento>(contenido, contentType, InstruccionesDocumento,
+            pregunta, EsquemaDocumento(), ct);
+        if (datos is null)
+            return ResultadoDocumentoFacturacionIA.NoAnalizado(error!);
+
+        return new ResultadoDocumentoFacturacionIA(
+            Analizado: true,
+            EsTipoEsperado: datos.es_tipo_esperado,
+            TipoDetectado: datos.tipo_documento_detectado,
+            ClienteCoincide: datos.cliente_coincide,
+            NumeroOrdenCompraLeido: string.IsNullOrWhiteSpace(datos.numero_orden_compra) ? null : datos.numero_orden_compra.Trim(),
+            Legible: datos.legible,
+            Observacion: datos.observacion,
+            Error: null);
+    }
+
+    /// <summary>Una llamada a Claude con el archivo + pregunta, respuesta JSON con el esquema dado.</summary>
+    private async Task<(T? Datos, string? Error)> PreguntarAsync<T>(byte[] contenido, string? contentType,
+        string instrucciones, string pregunta, Dictionary<string, JsonElement> esquema, CancellationToken ct) where T : class
+    {
         if (cliente is null)
-            return ResultadoVerificacionIA.NoAnalizado("La revisión con IA no está configurada.");
+            return (null, "La revisión con IA no está configurada.");
 
         var tipo = (contentType ?? "").ToLowerInvariant();
         BetaContentBlockParam bloqueArchivo;
@@ -79,7 +148,7 @@ public class VerificadorSoporteEntregaIA : IVerificadorSoporteEntrega
         }
         else
         {
-            return ResultadoVerificacionIA.NoAnalizado($"Formato no soportado para la revisión con IA ({contentType}). Usá foto JPG/PNG o PDF.");
+            return (null, $"Formato no soportado para la revisión con IA ({contentType}). Usá foto JPG/PNG o PDF.");
         }
 
         try
@@ -96,9 +165,9 @@ public class VerificadorSoporteEntregaIA : IVerificadorSoporteEntrega
                 OutputConfig = new BetaOutputConfig
                 {
                     Effort = Effort.Low,
-                    Format = new BetaJsonOutputFormat { Schema = Esquema() },
+                    Format = new BetaJsonOutputFormat { Schema = esquema },
                 },
-                System = Instrucciones,
+                System = instrucciones,
                 Messages =
                 [
                     new BetaUserMessageParam
@@ -106,60 +175,62 @@ public class VerificadorSoporteEntregaIA : IVerificadorSoporteEntrega
                         Content = new List<BetaContentBlockParam>
                         {
                             bloqueArchivo,
-                            new BetaTextBlockParam { Text = "Revisá este soporte de entrega." },
+                            new BetaTextBlockParam { Text = pregunta },
                         },
                     },
                 ],
             }, cancellationToken: ct);
 
             if (respuesta.StopReason == "refusal")
-                return ResultadoVerificacionIA.NoAnalizado("La IA no pudo revisar este archivo.");
+                return (null, "La IA no pudo revisar este archivo.");
 
             var texto = string.Concat(respuesta.Content.Select(b => b.TryPickText(out var t) ? t.Text : ""));
-            var datos = JsonSerializer.Deserialize<RespuestaIA>(texto, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            if (datos is null)
-                return ResultadoVerificacionIA.NoAnalizado("La IA devolvió una respuesta vacía.");
-
-            return new ResultadoVerificacionIA(
-                Analizado: true,
-                NumeroLeido: string.IsNullOrWhiteSpace(datos.numero_remision) ? null : new string(datos.numero_remision.Where(char.IsDigit).ToArray()),
-                EsRemisionJimaco: datos.es_remision_jimaco,
-                HayFirma: datos.hay_firma_cliente,
-                HayNombreOCedula: datos.hay_nombre_o_cedula,
-                Legible: datos.legible,
-                Confianza: datos.confianza ?? "baja",
-                Observacion: datos.observacion,
-                Error: null,
-                HaySello: datos.hay_sello_cliente);
+            var datos = JsonSerializer.Deserialize<T>(texto, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            return datos is null ? (null, "La IA devolvió una respuesta vacía.") : (datos, null);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogWarning(ex, "Falló la revisión con IA del soporte de entrega");
-            return ResultadoVerificacionIA.NoAnalizado("No se pudo revisar con IA en este momento. Intentá de nuevo en un minuto.");
+            logger.LogWarning(ex, "Falló la revisión con IA de un archivo de Entregas");
+            return (null, "No se pudo revisar con IA en este momento. Intentá de nuevo en un minuto.");
         }
     }
 
-    private static Dictionary<string, JsonElement> Esquema() => new()
+    private static Dictionary<string, JsonElement> Objeto(object propiedades, string[] requeridos) => new()
     {
         ["type"] = JsonSerializer.SerializeToElement("object"),
-        ["properties"] = JsonSerializer.SerializeToElement(new
-        {
-            numero_remision = new { type = new[] { "string", "null" } },
-            es_remision_jimaco = new { type = "boolean" },
-            hay_firma_cliente = new { type = "boolean" },
-            hay_sello_cliente = new { type = "boolean" },
-            hay_nombre_o_cedula = new { type = "boolean" },
-            legible = new { type = "boolean" },
-            confianza = new { type = "string", @enum = new[] { "alta", "media", "baja" } },
-            observacion = new { type = "string" },
-        }),
-        ["required"] = JsonSerializer.SerializeToElement(new[]
-            { "numero_remision", "es_remision_jimaco", "hay_firma_cliente", "hay_sello_cliente", "hay_nombre_o_cedula", "legible", "confianza", "observacion" }),
+        ["properties"] = JsonSerializer.SerializeToElement(propiedades),
+        ["required"] = JsonSerializer.SerializeToElement(requeridos),
         ["additionalProperties"] = JsonSerializer.SerializeToElement(false),
     };
 
-    // Nombres en snake_case = los del esquema JSON que devuelve el modelo.
-    private sealed record RespuestaIA(
+    private static Dictionary<string, JsonElement> EsquemaEntrega() => Objeto(new
+    {
+        numero_remision = new { type = new[] { "string", "null" } },
+        es_remision_jimaco = new { type = "boolean" },
+        hay_firma_cliente = new { type = "boolean" },
+        hay_sello_cliente = new { type = "boolean" },
+        hay_nombre_o_cedula = new { type = "boolean" },
+        legible = new { type = "boolean" },
+        confianza = new { type = "string", @enum = new[] { "alta", "media", "baja" } },
+        observacion = new { type = "string" },
+    }, ["numero_remision", "es_remision_jimaco", "hay_firma_cliente", "hay_sello_cliente", "hay_nombre_o_cedula", "legible", "confianza", "observacion"]);
+
+    private static Dictionary<string, JsonElement> EsquemaDocumento() => Objeto(new
+    {
+        tipo_documento_detectado = new { type = "string" },
+        es_tipo_esperado = new { type = "boolean" },
+        cliente_coincide = new { type = new[] { "boolean", "null" } },
+        numero_orden_compra = new { type = new[] { "string", "null" } },
+        legible = new { type = "boolean" },
+        observacion = new { type = "string" },
+    }, ["tipo_documento_detectado", "es_tipo_esperado", "cliente_coincide", "numero_orden_compra", "legible", "observacion"]);
+
+    // Nombres en snake_case = los de los esquemas JSON que devuelve el modelo.
+    private sealed record RespuestaEntrega(
         string? numero_remision, bool es_remision_jimaco, bool hay_firma_cliente, bool hay_sello_cliente, bool hay_nombre_o_cedula,
         bool legible, string? confianza, string? observacion);
+
+    private sealed record RespuestaDocumento(
+        string? tipo_documento_detectado, bool es_tipo_esperado, bool? cliente_coincide, string? numero_orden_compra,
+        bool legible, string? observacion);
 }
