@@ -53,7 +53,7 @@ public interface IInstanciaDocumentoService
     // Jimaco.Aprobaciones.Sincronizador, no por la UI. ----
 
     /// <summary>Documentos cuyo primer paso ya se aprobó acá y todavía no se confirmó que se escribió en WO.</summary>
-    Task<IReadOnlyList<PendienteEscrituraWODto>> ListarPendientesEscrituraWOAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<PendienteEscrituraWODto>> ListarPendientesEscrituraWOAsync(Empresa empresa = Empresa.Jimaco, CancellationToken ct = default);
 
     /// <summary>El Sincronizador confirma que ya escribió la aprobación en WO — saca el documento de la cola.</summary>
     Task ConfirmarEscrituraWOAsync(int instanciaDocumentoId, CancellationToken ct = default);
@@ -65,7 +65,7 @@ public interface IInstanciaDocumentoService
     // Jimaco.Aprobaciones.Sincronizador, no por la UI. ----
 
     /// <summary>Documentos esperando que el Sincronizador busque su Comprobante de Egreso en WO.</summary>
-    Task<IReadOnlyList<PendienteComprobanteEgresoDto>> ListarPendientesComprobanteEgresoAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<PendienteComprobanteEgresoDto>> ListarPendientesComprobanteEgresoAsync(Empresa empresa = Empresa.Jimaco, CancellationToken ct = default);
 
     /// <summary>El Sincronizador encontró el comprobante en WO — se adjunta y se dispara la notificación pospuesta.</summary>
     Task AdjuntarComprobanteEgresoAsync(int instanciaDocumentoId, ComprobanteEgresoEncontradoDto dto, CancellationToken ct = default);

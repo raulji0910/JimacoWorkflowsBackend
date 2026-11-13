@@ -13,6 +13,13 @@ namespace Jimaco.Aprobaciones.Sincronizador;
 /// </summary>
 public class WorldOfficeReader(string connectionString)
 {
+    private static readonly string[] Personalizados = ["Personalizado1", "Personalizado2", "Personalizado3", "Personalizado4"];
+
+    /// <summary>Valida un nombre de columna personalizada que viene del appsettings (nunca SQL libre).</summary>
+    public static string ColumnaPersonalizado(string? nombre) =>
+        Personalizados.FirstOrDefault(p => string.Equals(p, nombre?.Trim(), StringComparison.OrdinalIgnoreCase))
+        ?? throw new InvalidOperationException($"Columna personalizada no válida en MapeoWO: \"{nombre}\" (use Personalizado1..Personalizado4).");
+
     /// <summary>
     /// Documentos nuevos con cualquiera de los <paramref name="prefijos"/> configurados (uno por
     /// cada <c>TipoDocumento</c> con <c>PrefijoWorldOffice</c> seteado en Jimaco Aprobaciones — ver
@@ -67,6 +74,9 @@ public class WorldOfficeReader(string connectionString)
                 Nota,
                 IdFormaDePago,
                 IdUsuarioWO           AS SolicitanteWO,
+                Personalizado1,
+                Personalizado2,
+                Personalizado3,
                 Personalizado4
             FROM [CuentasContables - Asientos]
             WHERE prefijo = @Prefijo AND DocumentoNúmero = @DocumentoNumero
@@ -213,7 +223,10 @@ public class WorldOfficeReader(string connectionString)
                 Nota,
                 IdFormaDePago,
                 IdDirecciónExterno    AS IdDireccionExterno,
-                Personalizado2
+                Personalizado1,
+                Personalizado2,
+                Personalizado3,
+                Personalizado4
             FROM [CuentasContables - Asientos]
             WHERE prefijo = @Prefijo AND DocumentoNúmero = @DocumentoNumero
               AND (senAnulado = 0 OR senAnulado IS NULL);
@@ -257,19 +270,23 @@ public class WorldOfficeReader(string connectionString)
     /// barato: un solo escaneo acotado contra N consultas puntuales). El cruce real (extraer los
     /// números del texto libre y comparar) lo hace <c>Program.cs</c>.
     /// </summary>
-    public async Task<IReadOnlyList<RemisionRow>> ObtenerRemisionesRecientesAsync(int diasAtras, CancellationToken ct = default)
+    public async Task<IReadOnlyList<RemisionRow>> ObtenerRemisionesRecientesAsync(int diasAtras, CancellationToken ct = default, string columnaCotizacion = "Personalizado4")
     {
-        const string sql = """
+        // La columna con el número de Cotización cambia por empresa (Jimaco: Personalizado4;
+        // Ferrealiados: Personalizado2) — viene de la configuración, validada contra una lista fija
+        // antes de ir dentro del SQL.
+        var columna = ColumnaPersonalizado(columnaCotizacion);
+        var sql = $"""
             SELECT
                 IdAsientoContable,
                 DocumentoNúmero AS DocumentoNumero,
                 Fecha,
-                Personalizado4  AS Cotizacion
+                {columna}  AS Cotizacion
             FROM [CuentasContables - Asientos]
             WHERE prefijo = 'REM'
               AND (senAnulado = 0 OR senAnulado IS NULL)
               AND Fecha >= DATEADD(day, -@DiasAtras, CAST(GETDATE() AS DATE))
-              AND Personalizado4 IS NOT NULL AND Personalizado4 <> '';
+              AND {columna} IS NOT NULL AND {columna} <> '';
             """;
 
         await using var conexion = new SqlConnection(connectionString);

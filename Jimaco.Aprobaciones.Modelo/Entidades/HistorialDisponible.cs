@@ -21,6 +21,9 @@ public class HistorialDisponible
 
     public int Id { get; set; }
 
+    /// <summary>Empresa de la Hoja (2026-11-13) — ver <see cref="DocumentoVinculado.Empresa"/>.</summary>
+    public Empresa Empresa { get; set; } = Empresa.Jimaco;
+
     [MaxLength(20)]
     public required string PrefijoOrigen { get; set; }
 

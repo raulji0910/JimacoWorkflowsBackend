@@ -1,3 +1,4 @@
+using Jimaco.Aprobaciones.Modelo.Entidades;
 using Jimaco.Aprobaciones.Negocio.DTOs;
 
 namespace Jimaco.Aprobaciones.Negocio.Interfaces;
@@ -10,7 +11,7 @@ namespace Jimaco.Aprobaciones.Negocio.Interfaces;
 public interface IHojaAlistamientoService
 {
     /// <summary>Todas las Hojas de Alistamiento con su estado — exige que el usuario tenga PuedeGestionarAlistamiento o PuedeVerAlistamiento.</summary>
-    Task<IReadOnlyList<HojaAlistamientoResumenDto>> ListarAsync(int usuarioId, CancellationToken ct = default);
+    Task<IReadOnlyList<HojaAlistamientoResumenDto>> ListarAsync(int usuarioId, CancellationToken ct = default, Empresa empresa = Empresa.Jimaco);
 
     /// <summary>Una Hoja de Alistamiento puntual, con sus renglones — vista propia sin el resto de la OC.</summary>
     Task<HojaAlistamientoDetalleDto> ObtenerAsync(int documentoVinculadoId, int usuarioId, CancellationToken ct = default);
@@ -19,14 +20,14 @@ public interface IHojaAlistamientoService
     Task ActualizarCantidadesAsync(int documentoVinculadoId, int usuarioId, ActualizarCantidadesDisponiblesDto dto, CancellationToken ct = default);
 
     /// <summary>Cotizaciones con Hoja de Alistamiento activa que todavía no están marcadas como remisionadas — para el Sincronizador.</summary>
-    Task<IReadOnlyList<PendienteRemisionDto>> ListarPendientesRemisionAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<PendienteRemisionDto>> ListarPendientesRemisionAsync(CancellationToken ct = default, Empresa empresa = Empresa.Jimaco);
 
     /// <summary>
     /// Cotizaciones con Hoja de Alistamiento activa que todavía NO está Completa — independiente de
     /// si ya se remisionó (ver <see cref="PendienteRefrescoDto"/>). El Sincronizador usa esta lista,
     /// no <see cref="ListarPendientesRemisionAsync"/>, para decidir a cuáles volver a leer en WO.
     /// </summary>
-    Task<IReadOnlyList<PendienteRefrescoDto>> ListarPendientesRefrescoAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<PendienteRefrescoDto>> ListarPendientesRefrescoAsync(CancellationToken ct = default, Empresa empresa = Empresa.Jimaco);
 
     /// <summary>
     /// Crea una Hoja de Alistamiento SIN ligarla a ninguna OC (2026-10-21) — para Cotizaciones que el
@@ -34,7 +35,7 @@ public interface IHojaAlistamientoService
     /// por el flujo de aprobación. Idempotente por Prefijo+Número: si ya existe cualquier copia (con
     /// o sin OC) para esa Cotización, no hace nada.
     /// </summary>
-    Task CrearSinOcAsync(DocumentoVinculadoInputDto dto, CancellationToken ct = default);
+    Task CrearSinOcAsync(DocumentoVinculadoInputDto dto, CancellationToken ct = default, Empresa empresa = Empresa.Jimaco);
 
     /// <summary>
     /// El Sincronizador reporta que encontró el cruce con una Remisión real, con sus renglones reales
@@ -42,7 +43,7 @@ public interface IHojaAlistamientoService
     /// que comparten esa Cotización (2026-10-26: el despacho queda a nivel de renglón, no de
     /// documento completo, porque un mismo ítem puede llegar repartido en varias Remisiones).
     /// </summary>
-    Task MarcarRemisionadaAsync(MarcarRemisionadaDto dto, CancellationToken ct = default);
+    Task MarcarRemisionadaAsync(MarcarRemisionadaDto dto, CancellationToken ct = default, Empresa empresa = Empresa.Jimaco);
 
     /// <summary>
     /// El Sincronizador vuelve a leer una Cotización todavía activa (no remisionada) y manda su
@@ -50,5 +51,5 @@ public interface IHojaAlistamientoService
     /// comparten esa Cotización, conservando la cantidad disponible ya marcada para los ítems que
     /// sigan siendo los mismos (ver nota en DocumentoVinculado).
     /// </summary>
-    Task RefrescarDesdeWOAsync(DocumentoVinculadoInputDto dto, CancellationToken ct = default);
+    Task RefrescarDesdeWOAsync(DocumentoVinculadoInputDto dto, CancellationToken ct = default, Empresa empresa = Empresa.Jimaco);
 }

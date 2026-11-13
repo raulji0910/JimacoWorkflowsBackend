@@ -48,6 +48,16 @@ public class Rol
     public bool PuedeVerAlistamiento { get; set; }
 
     /// <summary>
+    /// Lo mismo que <see cref="PuedeGestionarAlistamiento"/> pero para las Hojas de Alistamiento de
+    /// FERREALIADOS (2026-11-13) — dashboard aparte, mismas reglas. Permisos separados para decidir
+    /// qué personas de Logística ven cada empresa.
+    /// </summary>
+    public bool PuedeGestionarAlistamientoFerrealiados { get; set; }
+
+    /// <summary>Solo consultar el dashboard de alistamiento de FERREALIADOS.</summary>
+    public bool PuedeVerAlistamientoFerrealiados { get; set; }
+
+    /// <summary>
     /// Módulo de Cuentas por Pagar (2026-11-05): ver el estado de lo que se les debe a los
     /// proveedores (foto de World Office) y decidir qué facturas se mandan a pagar — pensado para
     /// Gerencia Comercial. Cada decisión crea un documento "Pago a Proveedor" que sigue el flujo

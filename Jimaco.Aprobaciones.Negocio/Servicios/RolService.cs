@@ -13,7 +13,8 @@ public class RolService(AppDbContext db) : IRolService
             .OrderBy(r => r.Nombre)
             .Select(r => new RolDto(
                 r.Id, r.Nombre, r.Descripcion, r.Activo,
-                r.PuedeDevolverCualquierDocumento, r.PuedeGestionarAlistamiento, r.PuedeVerAlistamiento, r.PuedeVerCuentasPorPagar, r.PuedePagarCuentas))
+                r.PuedeDevolverCualquierDocumento, r.PuedeGestionarAlistamiento, r.PuedeVerAlistamiento, r.PuedeVerCuentasPorPagar, r.PuedePagarCuentas,
+                r.PuedeGestionarAlistamientoFerrealiados, r.PuedeVerAlistamientoFerrealiados))
             .ToListAsync(ct);
 
     public async Task<RolDto> CrearAsync(CrearRolDto dto, CancellationToken ct = default)
@@ -30,7 +31,9 @@ public class RolService(AppDbContext db) : IRolService
             PuedeGestionarAlistamiento = dto.PuedeGestionarAlistamiento,
             PuedeVerAlistamiento = dto.PuedeVerAlistamiento,
             PuedeVerCuentasPorPagar = dto.PuedeVerCuentasPorPagar,
-            PuedePagarCuentas = dto.PuedePagarCuentas
+            PuedePagarCuentas = dto.PuedePagarCuentas,
+            PuedeGestionarAlistamientoFerrealiados = dto.PuedeGestionarAlistamientoFerrealiados,
+            PuedeVerAlistamientoFerrealiados = dto.PuedeVerAlistamientoFerrealiados
         };
         db.Roles.Add(rol);
         await db.SaveChangesAsync(ct);
@@ -54,6 +57,8 @@ public class RolService(AppDbContext db) : IRolService
         rol.PuedeVerAlistamiento = dto.PuedeVerAlistamiento;
         rol.PuedeVerCuentasPorPagar = dto.PuedeVerCuentasPorPagar;
         rol.PuedePagarCuentas = dto.PuedePagarCuentas;
+        rol.PuedeGestionarAlistamientoFerrealiados = dto.PuedeGestionarAlistamientoFerrealiados;
+        rol.PuedeVerAlistamientoFerrealiados = dto.PuedeVerAlistamientoFerrealiados;
         await db.SaveChangesAsync(ct);
 
         return MapearDto(rol);
@@ -61,5 +66,6 @@ public class RolService(AppDbContext db) : IRolService
 
     private static RolDto MapearDto(Rol rol) => new(
         rol.Id, rol.Nombre, rol.Descripcion, rol.Activo,
-        rol.PuedeDevolverCualquierDocumento, rol.PuedeGestionarAlistamiento, rol.PuedeVerAlistamiento, rol.PuedeVerCuentasPorPagar, rol.PuedePagarCuentas);
+        rol.PuedeDevolverCualquierDocumento, rol.PuedeGestionarAlistamiento, rol.PuedeVerAlistamiento, rol.PuedeVerCuentasPorPagar, rol.PuedePagarCuentas,
+        rol.PuedeGestionarAlistamientoFerrealiados, rol.PuedeVerAlistamientoFerrealiados);
 }

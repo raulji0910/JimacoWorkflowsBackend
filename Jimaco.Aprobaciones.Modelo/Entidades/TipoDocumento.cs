@@ -39,6 +39,13 @@ public class TipoDocumento
 
     public bool Activo { get; set; } = true;
 
+    /// <summary>
+    /// Empresa a la que pertenece este tipo (2026-11-13) — "Orden de Compra" (Jimaco) y "Orden de
+    /// Compra Ferrealiados" comparten el prefijo "OC" de WO pero viven en bases distintas. Cada
+    /// documento hereda la empresa de su tipo.
+    /// </summary>
+    public Empresa Empresa { get; set; } = Empresa.Jimaco;
+
     public ICollection<CampoTipoDocumento> Campos { get; set; } = [];
     public ICollection<DefinicionFlujo> DefinicionesFlujo { get; set; } = [];
 }

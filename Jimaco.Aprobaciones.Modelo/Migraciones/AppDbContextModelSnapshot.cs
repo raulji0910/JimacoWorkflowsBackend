@@ -439,6 +439,9 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<int>("Empresa")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("Fecha")
                         .HasColumnType("datetime2");
 
@@ -482,6 +485,8 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.HasKey("Id");
 
                     b.HasIndex("InstanciaDocumentoId");
+
+                    b.HasIndex("Empresa", "PrefijoOrigen", "NumeroReferencia");
 
                     b.ToTable("DocumentosVinculados");
                 });
@@ -601,6 +606,9 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                         .HasMaxLength(300)
                         .HasColumnType("nvarchar(300)");
 
+                    b.Property<int>("Empresa")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("Fecha")
                         .HasColumnType("datetime2");
 
@@ -628,7 +636,7 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
 
                     b.HasKey("Id");
 
-                    b.HasIndex("PrefijoOrigen", "NumeroReferencia", "Codigo");
+                    b.HasIndex("Empresa", "PrefijoOrigen", "NumeroReferencia", "Codigo");
 
                     b.ToTable("HistorialDisponible");
                 });
@@ -656,6 +664,9 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("DefinicionFlujoId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Empresa")
                         .HasColumnType("int");
 
                     b.Property<int>("Estado")
@@ -727,6 +738,8 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.HasIndex("SoportePagoAdjuntoId");
 
                     b.HasIndex("TipoDocumentoId");
+
+                    b.HasIndex("Empresa", "PrefijoOrigen", "IdAsientoContableOrigen");
 
                     b.ToTable("InstanciasDocumento");
                 });
@@ -1295,10 +1308,16 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Property<bool>("PuedeGestionarAlistamiento")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("PuedeGestionarAlistamientoFerrealiados")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("PuedePagarCuentas")
                         .HasColumnType("bit");
 
                     b.Property<bool>("PuedeVerAlistamiento")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("PuedeVerAlistamientoFerrealiados")
                         .HasColumnType("bit");
 
                     b.Property<bool>("PuedeVerCuentasPorPagar")
@@ -1320,8 +1339,10 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                             Nombre = "Admin",
                             PuedeDevolverCualquierDocumento = false,
                             PuedeGestionarAlistamiento = false,
+                            PuedeGestionarAlistamientoFerrealiados = false,
                             PuedePagarCuentas = false,
                             PuedeVerAlistamiento = false,
+                            PuedeVerAlistamientoFerrealiados = false,
                             PuedeVerCuentasPorPagar = false
                         });
                 });
@@ -1396,6 +1417,9 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Property<string>("Descripcion")
                         .HasMaxLength(300)
                         .HasColumnType("nvarchar(300)");
+
+                    b.Property<int>("Empresa")
+                        .HasColumnType("int");
 
                     b.Property<string>("Nombre")
                         .IsRequired()
@@ -2260,6 +2284,10 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                         .HasColumnType("nvarchar(30)");
 
                     b.Property<string>("UsuarioWO")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("UsuarioWOFerrealiados")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 

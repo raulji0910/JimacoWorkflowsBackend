@@ -79,7 +79,9 @@ public record InstanciaDocumentoResumenDto(
     DateTime? FechaDocumento,
     EstadoInstanciaDocumento Estado,
     string? PasoActualNombre,
-    DateTime FechaCreacion);
+    DateTime FechaCreacion,
+    /// <summary>"Jimaco" o "Ferrealiados" (2026-11-13) — etiqueta en las listas.</summary>
+    string Empresa = "Jimaco");
 
 public record RenglonDocumentoVinculadoDto(
     int Id,

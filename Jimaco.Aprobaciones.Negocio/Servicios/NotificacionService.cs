@@ -176,7 +176,7 @@ public class NotificacionService(
         if (hoja is null) return;
 
         var instanciaIdsDelGrupo = await db.DocumentosVinculados
-            .Where(d => d.PrefijoOrigen == hoja.PrefijoOrigen && d.NumeroReferencia == hoja.NumeroReferencia && d.InstanciaDocumentoId != null)
+            .Where(d => d.Empresa == hoja.Empresa && d.PrefijoOrigen == hoja.PrefijoOrigen && d.NumeroReferencia == hoja.NumeroReferencia && d.InstanciaDocumentoId != null)
             .Select(d => d.InstanciaDocumentoId!.Value)
             .Distinct()
             .ToListAsync(ct);
@@ -188,12 +188,12 @@ public class NotificacionService(
             : $"Cotización {hoja.NumeroReferencia}";
         var horas = (int)(timeProvider.GetUtcNow().UtcDateTime - hoja.FechaCreacion).TotalHours;
 
-        var asunto = $"[Jimaco Aprobaciones] Hoja de Alistamiento {hoja.NumeroReferencia} de {desc} sigue incompleta";
+        var asunto = $"[Jimaco Aprobaciones] Hoja de Alistamiento {EtiquetaEmpresa(hoja)}{hoja.NumeroReferencia} de {desc} sigue incompleta";
         var cuerpo = $"""
             <p>La Hoja de Alistamiento <strong>{hoja.NumeroReferencia}</strong> (de {desc}
             {(hoja.Cliente is null ? "" : $", cliente {hoja.Cliente}")}) lleva <strong>{horas} horas</strong>
             generada sin completarse.</p>
-            <p><a href="{frontendBaseUrl}/alistamiento">Ver el dashboard de alistamiento</a></p>
+            <p><a href="{frontendBaseUrl}{RutaAlistamiento(hoja)}">Ver el dashboard de alistamiento</a></p>
             """;
 
         foreach (var usuario in destinatarios)
@@ -222,12 +222,12 @@ public class NotificacionService(
             ? "y fue remisionada"
             : $"y fue remisionada (Remisión{(numerosRemision.Count > 1 ? "es" : "")} {string.Join(", ", numerosRemision)})";
 
-        var asunto = $"[Jimaco Aprobaciones] Hoja de Alistamiento {hoja.NumeroReferencia} completa y remisionada";
+        var asunto = $"[Jimaco Aprobaciones] Hoja de Alistamiento {EtiquetaEmpresa(hoja)}{hoja.NumeroReferencia} completa y remisionada";
         var cuerpo = $"""
             <p>La Hoja de Alistamiento <strong>{hoja.NumeroReferencia}</strong> (de {desc}
             {(hoja.Cliente is null ? "" : $", cliente {hoja.Cliente}")}) ya está completa en Alistamiento
             {textoRemision} en World Office.</p>
-            <p><a href="{frontendBaseUrl}/alistamiento">Ver el dashboard de alistamiento</a></p>
+            <p><a href="{frontendBaseUrl}{RutaAlistamiento(hoja)}">Ver el dashboard de alistamiento</a></p>
             """;
 
         foreach (var usuario in destinatarios)
@@ -242,10 +242,20 @@ public class NotificacionService(
     /// mandó cada OC del grupo a aprobar (SolicitanteWO). PuedeVerAlistamiento ya no da correos, solo
     /// acceso al tablero.
     /// </summary>
+    /// <summary>"Ferrealiados " en los avisos de esa empresa; nada para Jimaco (los avisos de siempre no cambian).</summary>
+    private static string EtiquetaEmpresa(DocumentoVinculado hoja) =>
+        hoja.Empresa == Empresa.Jimaco ? "" : hoja.Empresa.Nombre() + " ";
+
+    private static string RutaAlistamiento(DocumentoVinculado hoja) =>
+        hoja.Empresa == Empresa.Ferrealiados ? "/alistamiento-ferrealiados" : "/alistamiento";
+
     private async Task<List<Usuario>> ObtenerDestinatariosHojaAsync(DocumentoVinculado hoja, IReadOnlyCollection<int> instanciaIdsDelGrupo, CancellationToken ct)
     {
+        // Logística DE LA EMPRESA de la hoja (2026-11-13): los permisos de Ferrealiados son aparte.
+        var esFerrealiados = hoja.Empresa == Empresa.Ferrealiados;
         var logistica = await db.UsuarioRoles
-            .Where(ur => ur.Rol.Activo && ur.Rol.PuedeGestionarAlistamiento && ur.Usuario.Activo)
+            .Where(ur => ur.Rol.Activo && ur.Usuario.Activo
+                && (esFerrealiados ? ur.Rol.PuedeGestionarAlistamientoFerrealiados : ur.Rol.PuedeGestionarAlistamiento))
             .Select(ur => ur.Usuario)
             .Distinct()
             .ToListAsync(ct);
@@ -260,7 +270,10 @@ public class NotificacionService(
                 .Select(i => i.SolicitanteWO)
                 .Distinct()
                 .ToListAsync(ct);
-            emisores = await db.Usuarios.Where(u => u.Activo && solicitantes.Contains(u.UsuarioWO)).ToListAsync(ct);
+            emisores = esFerrealiados
+                ? await db.Usuarios.Where(u => u.Activo && (solicitantes.Contains(u.UsuarioWOFerrealiados)
+                    || ((u.UsuarioWOFerrealiados == null || u.UsuarioWOFerrealiados == "") && solicitantes.Contains(u.UsuarioWO)))).ToListAsync(ct)
+                : await db.Usuarios.Where(u => u.Activo && solicitantes.Contains(u.UsuarioWO)).ToListAsync(ct);
 
             if (emisores.Count == 0)
                 logger.LogWarning("Hoja de Alistamiento {Hoja}: ningún usuario corresponde a \"{ElaboradoPor}\" — el aviso solo le llega a Logística.",
@@ -317,7 +330,10 @@ public class NotificacionService(
         // requiere un Usuario registrado con el mismo UsuarioWO que mandó a aprobar en World Office.
         if (!string.IsNullOrWhiteSpace(instancia.SolicitanteWO))
         {
-            var emisor = await db.Usuarios.FirstOrDefaultAsync(u => u.UsuarioWO == instancia.SolicitanteWO && u.Activo, ct);
+            var emisor = instancia.Empresa == Empresa.Ferrealiados
+                ? await db.Usuarios.FirstOrDefaultAsync(u => u.Activo && (u.UsuarioWOFerrealiados == instancia.SolicitanteWO
+                    || ((u.UsuarioWOFerrealiados == null || u.UsuarioWOFerrealiados == "") && u.UsuarioWO == instancia.SolicitanteWO)), ct)
+                : await db.Usuarios.FirstOrDefaultAsync(u => u.UsuarioWO == instancia.SolicitanteWO && u.Activo, ct);
             if (emisor is not null)
                 await CrearYEnviarAsync(instancia.Id, emisor, asunto, cuerpo, ct, adjuntosCorreo);
         }

@@ -33,9 +33,24 @@ var jimacoPassword = config["Jimaco:UsuarioServicio:Password"]
 // no "consumen" nada compartido, así que no necesitan un interruptor propio.
 var procesarCorreoNuevo = !bool.TryParse(config["Sincronizador:ProcesarCorreoNuevo"], out var pcn) || pcn;
 
+// ---- Empresa y mapeo de campos (2026-11-13, FERREALIADOS) ----
+// El mismo exe sirve a las dos empresas del grupo: cada copia apunta a la base de WO de su empresa y
+// se identifica ante la Api con el encabezado X-Empresa (la Api solo le muestra/le deja tocar lo de
+// esa empresa). Sin "Empresa:Nombre" = Jimaco, como siempre.
+var empresa = string.IsNullOrWhiteSpace(config["Empresa:Nombre"]) ? "Jimaco" : config["Empresa:Nombre"]!.Trim();
+// Los campos personalizados de WO no significan lo mismo en cada empresa (confirmado con datos reales
+// de FERRALIADOS2026): en Ferrealiados la COT va en el Personalizado2 de la REM (Jimaco: 4), el lugar de
+// entrega en el Personalizado1 de la COT (Jimaco: 2) y las observaciones del asesor en el
+// Personalizado1 de la OC (Jimaco: 4). El vínculo OC → COT es el mismo en las dos: NúmDocumentoExterno.
+var campoEntregaEnCotizacion = WorldOfficeReader.ColumnaPersonalizado(config["MapeoWO:CampoEntregaEnCotizacion"] ?? "Personalizado2");
+var observacionesEnOC = WorldOfficeReader.ColumnaPersonalizado(config["MapeoWO:ObservacionesAdicionalesEnOC"] ?? "Personalizado4");
+var cotizacionEnRemision = WorldOfficeReader.ColumnaPersonalizado(config["MapeoWO:CotizacionEnRemision"] ?? "Personalizado4");
+Console.WriteLine($"[{DateTime.Now:s}] Empresa: {empresa} — COT en REM: {cotizacionEnRemision}, campo entrega en COT: {campoEntregaEnCotizacion}, observaciones en OC: {observacionesEnOC}.");
+
 var lector = new WorldOfficeReader(connectionStringWorldOffice);
 
 using var http = new HttpClient { BaseAddress = new Uri(jimacoApiUrl) };
+http.DefaultRequestHeaders.Add("X-Empresa", empresa);
 var jimaco = new JimacoAprobacionesClient(http, jimacoEmail, jimacoPassword);
 
 if (!procesarCorreoNuevo)
@@ -124,8 +139,8 @@ else
             datos["formaDePago"] = formaDePago;
         if (!string.IsNullOrWhiteSpace(oc.Nota))
             datos["observaciones"] = oc.Nota;
-        if (!string.IsNullOrWhiteSpace(oc.Personalizado4))
-            datos["observacionesAdicionales"] = oc.Personalizado4;
+        if (!string.IsNullOrWhiteSpace(oc.Personalizado(observacionesEnOC)))
+            datos["observacionesAdicionales"] = oc.Personalizado(observacionesEnOC)!;
 
         var renglones = renglonesWO
             .Select(r => new RenglonInputDto(
@@ -483,7 +498,7 @@ Console.WriteLine($"[{DateTime.Now:s}] {pendientesRemision.Count} Cotización(es
 if (pendientesRemision.Count > 0)
 {
     var diasAtrasRemision = int.TryParse(config["Alistamiento:DiasAtrasRemision"], out var dar) ? dar : 60;
-    var remisionesRecientes = await lector.ObtenerRemisionesRecientesAsync(diasAtrasRemision);
+    var remisionesRecientes = await lector.ObtenerRemisionesRecientesAsync(diasAtrasRemision, columnaCotizacion: cotizacionEnRemision);
 
     // Por cada número que aparece en el campo libre de una Remisión, TODAS las Remisiones que lo
     // mencionan cuentan (2026-10-26, antes solo se quedaba con la más antigua) — un mismo ítem puede
@@ -538,6 +553,13 @@ if (pendientesRemision.Count > 0)
 // ya existe cualquier copia para esa Cotización, con o sin OC), así que acá simplemente se reescanea
 // una ventana corta de días en cada corrida — más simple y más robusto que llevar una marca de agua
 // propia (si una corrida se cae a mitad de camino, la próxima retoma sola, sin estado que perder).
+// Ferrealiados no usa la marca "INVENTARIO" (0 cotizaciones) y su Personalizado1 es texto libre del
+// asesor — se apaga con Alistamiento:CotizacionesSinOcActivo=false para no crear hojas por error.
+var cotizacionesSinOcActivo = !bool.TryParse(config["Alistamiento:CotizacionesSinOcActivo"], out var csoa) || csoa;
+if (!cotizacionesSinOcActivo)
+    Console.WriteLine($"[{DateTime.Now:s}] Alistamiento:CotizacionesSinOcActivo=false — no se crean Hojas de Alistamiento sin OC.");
+else
+{
 Console.WriteLine($"[{DateTime.Now:s}] Revisando Cotizaciones recientes marcadas para alistamiento sin OC...");
 // Piso fijo, no una ventana móvil (pedido explícito del usuario, 2026-10-22: "que solo busque a
 // partir de hoy, lo antiguo no lo traiga") — se configura UNA vez, el día en que esto se activa en
@@ -566,6 +588,7 @@ foreach (var cot in cotizacionesRecientes)
         // reintenta sola en la próxima corrida (reescanea la misma ventana de días).
         Console.Error.WriteLine($"[{DateTime.Now:s}]   ERROR creando Hoja de Alistamiento sin OC para la Cotización {cot.DocumentoNumero:0}: {ex.Message}");
     }
+}
 }
 
 // ---- Cuentas por pagar (2026-11-05) — foto completa en cada corrida (no hay marca de agua: lo que
@@ -714,7 +737,7 @@ async Task<DocumentoVinculadoInputDto?> ObtenerDocumentoVinculadoInputAsync(deci
         Telefono: direccion?.Telefonos,
         ElaboradoPor: vendedor?.NombreCompleto,
         FormaDePago: formaDePago,
-        CampoEntrega: cot.Personalizado2,
+        CampoEntrega: cot.Personalizado(campoEntregaEnCotizacion),
         Renglones: renglonesCot.Select(r => new RenglonDocumentoVinculadoInputDto(
             Codigo: r.Codigo,
             Descripcion: r.Descripcion ?? "(sin descripción)",

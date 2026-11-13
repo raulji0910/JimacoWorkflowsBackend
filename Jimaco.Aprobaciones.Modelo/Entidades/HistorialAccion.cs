@@ -17,7 +17,14 @@ public enum TipoAccion
     /// Devolver, no es una corrección hacia atrás: el documento sigue su curso normal desde el
     /// paso destino.
     /// </summary>
-    RedirigidoAContado = 6
+    RedirigidoAContado = 6,
+
+    /// <summary>
+    /// El documento entró a un flujo SIN pasos (2026-11-13, OC a crédito de Ferrealiados: "pasan
+    /// derecho a logística sin ninguna aprobación") y quedó aprobado al llegar. Para Alistamiento
+    /// vale igual que la aprobación del paso 1: libera la Hoja y arranca el reloj de la alerta.
+    /// </summary>
+    AprobadoAutomatico = 7
 }
 
 /// <summary>Registro inmutable de auditoría: quién hizo qué, cuándo, y con qué comentario, sobre una instancia de documento.</summary>

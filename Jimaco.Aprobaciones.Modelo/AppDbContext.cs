@@ -178,6 +178,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(i => i.Valor).HasPrecision(18, 2);
             e.Property(i => i.FechaCreacion).HasConversion(ConversorFechaUtc);
             e.Property(i => i.FechaEscrituraWO).HasConversion(ConversorFechaUtcNullable);
+            e.HasIndex(i => new { i.Empresa, i.PrefijoOrigen, i.IdAsientoContableOrigen });
 
             e.HasOne(i => i.TipoDocumento)
                 .WithMany()
@@ -264,6 +265,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(d => d.FechaCreacion).HasConversion(ConversorFechaUtc);
             e.Property(d => d.UltimaAlertaEnviada).HasConversion(ConversorFechaUtcNullable);
             e.Property(d => d.FechaCompletada).HasConversion(ConversorFechaUtcNullable);
+            // Hoja = (Empresa, Prefijo, Número): la COT 894 de Ferrealiados no es la de Jimaco.
+            e.HasIndex(d => new { d.Empresa, d.PrefijoOrigen, d.NumeroReferencia });
 
             e.HasOne(d => d.InstanciaDocumento)
                 .WithMany(i => i.DocumentosVinculados)
@@ -336,7 +339,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(h => h.CantidadAnterior).HasPrecision(18, 3);
             e.Property(h => h.CantidadNueva).HasPrecision(18, 3);
             e.Property(h => h.CantidadPorRestaurar).HasPrecision(18, 3);
-            e.HasIndex(h => new { h.PrefijoOrigen, h.NumeroReferencia, h.Codigo });
+            e.HasIndex(h => new { h.Empresa, h.PrefijoOrigen, h.NumeroReferencia, h.Codigo });
         });
 
         modelBuilder.Entity<RemisionRenglon>(e =>

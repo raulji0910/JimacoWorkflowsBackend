@@ -56,13 +56,17 @@ public class InstanciaDocumentoService(
         // dos corridas superpuestas), se devuelve el documento que ya existe en vez de crear un
         // duplicado — sin esto, cada reintento crea un `InstanciaDocumento` nuevo arrancando desde
         // cero, dejando el historial real disperso entre copias.
+        // La empresa del documento es la de su tipo (2026-11-13): la OC 1503 de Ferrealiados y la
+        // OC 1503 de Jimaco pueden incluso compartir IdAsientoContable — son bases de WO distintas.
+        var empresa = await db.TiposDocumento.Where(t => t.Id == dto.TipoDocumentoId).Select(t => t.Empresa).FirstOrDefaultAsync(ct);
+
         if (dto.IdAsientoContableOrigen is not null && dto.PrefijoOrigen is not null)
         {
             var existente = await db.InstanciasDocumento
                 .Include(i => i.DefinicionFlujo).ThenInclude(f => f.Pasos)
                 .Include(i => i.Renglones)
                 .Include(i => i.DocumentosVinculados).ThenInclude(d => d.Renglones)
-                .Where(i => i.IdAsientoContableOrigen == dto.IdAsientoContableOrigen && i.PrefijoOrigen == dto.PrefijoOrigen)
+                .Where(i => i.IdAsientoContableOrigen == dto.IdAsientoContableOrigen && i.PrefijoOrigen == dto.PrefijoOrigen && i.Empresa == empresa)
                 .OrderByDescending(i => i.Id)
                 .FirstOrDefaultAsync(ct);
 
@@ -94,7 +98,8 @@ public class InstanciaDocumentoService(
                     // el flujo con los datos frescos, igual que en una creación nueva.
                     var flujoFresco = await SeleccionarFlujoAsync(existente.TipoDocumentoId, valorFresco, formaDePagoFresca, ct);
                     existente.DefinicionFlujoId = flujoFresco.Id;
-                    var primerPasoReenvio = flujoFresco.Pasos.OrderBy(p => p.Orden).First();
+                    // Flujo sin pasos (crédito de Ferrealiados): queda aprobado al llegar, ver más abajo.
+                    var primerPasoReenvio = flujoFresco.Pasos.OrderBy(p => p.Orden).FirstOrDefault();
                     var ahoraReenvio = timeProvider.GetUtcNow().UtcDateTime;
 
                     existente.Renglones.Clear();
@@ -109,6 +114,7 @@ public class InstanciaDocumentoService(
                     // verdad, y solo se crea copia para una Cotización nueva — heredando el avance de
                     // sus hermanas si la Cotización ya estaba ligada a otra OC.
                     var vinculadosFrescos = ConstruirDocumentosVinculados(dto.DocumentosVinculados);
+                    foreach (var v in vinculadosFrescos) v.Empresa = empresa;
                     var clavesFrescas = vinculadosFrescos.Select(v => (v.PrefijoOrigen, v.NumeroReferencia)).ToHashSet();
                     foreach (var vieja in existente.DocumentosVinculados.Where(v => !clavesFrescas.Contains((v.PrefijoOrigen, v.NumeroReferencia))).ToList())
                     {
@@ -127,8 +133,8 @@ public class InstanciaDocumentoService(
                     existente.Valor = valorFresco;
                     existente.SolicitanteWO = dto.SolicitanteWO;
 
-                    existente.PasoActualId = primerPasoReenvio.Id;
-                    existente.Estado = EstadoInstanciaDocumento.EnProceso;
+                    existente.PasoActualId = primerPasoReenvio?.Id;
+                    existente.Estado = primerPasoReenvio is null ? EstadoInstanciaDocumento.Completado : EstadoInstanciaDocumento.EnProceso;
 
                     // Si venía de un Devuelto, el paso 1 pudo haber dejado pendiente una escritura en
                     // WO (ver TipoAccion.Devuelto más abajo) — si el Sincronizador todavía no llegó a
@@ -140,14 +146,17 @@ public class InstanciaDocumentoService(
                     db.HistorialAcciones.Add(new HistorialAccion
                     {
                         InstanciaDocumentoId = existente.Id,
-                        PasoFlujoId = primerPasoReenvio.Id,
+                        PasoFlujoId = primerPasoReenvio?.Id,
                         UsuarioId = usuarioId,
                         Accion = TipoAccion.Reenviado,
                         Fecha = ahoraReenvio
                     });
+                    if (primerPasoReenvio is null)
+                        AprobarAutomaticamente(existente, usuarioId, ahoraReenvio);
 
                     await db.SaveChangesAsync(ct);
-                    await NotificarSinRomperAsync(() => notificacionService.NotificarPasoAsync(existente.Id, primerPasoReenvio.Id, ct));
+                    if (primerPasoReenvio is not null)
+                        await NotificarSinRomperAsync(() => notificacionService.NotificarPasoAsync(existente.Id, primerPasoReenvio.Id, ct));
                 }
 
                 return await ObtenerAsync(existente.Id, ct);
@@ -171,21 +180,25 @@ public class InstanciaDocumentoService(
         var valor = CalcularValorConIva(renglones, dto.Valor);
 
         var documentosVinculados = ConstruirDocumentosVinculados(dto.DocumentosVinculados);
+        foreach (var v in documentosVinculados) v.Empresa = tipoDocumento.Empresa;
         await HeredarAvanceDeCopiasHermanasAsync(documentosVinculados, ct);
 
         var formaDePago = dto.Datos?.GetValueOrDefault("formaDePago");
         var flujo = await SeleccionarFlujoAsync(dto.TipoDocumentoId, valor, formaDePago, ct);
 
-        var primerPaso = flujo.Pasos.OrderBy(p => p.Orden).FirstOrDefault()
-            ?? throw new InvalidOperationException("El flujo no tiene pasos configurados.");
+        // Un flujo SIN pasos es válido (2026-11-13, OC a crédito de Ferrealiados: "pasan derecho a
+        // logística sin ninguna aprobación"): el documento queda Completado al llegar, con un
+        // AprobadoAutomatico en el historial que libera su Hoja de Alistamiento.
+        var primerPaso = flujo.Pasos.OrderBy(p => p.Orden).FirstOrDefault();
 
         var ahora = timeProvider.GetUtcNow().UtcDateTime;
         var instancia = new InstanciaDocumento
         {
             TipoDocumentoId = tipoDocumento.Id,
+            Empresa = tipoDocumento.Empresa,
             DefinicionFlujoId = flujo.Id,
-            PasoActualId = primerPaso.Id,
-            Estado = EstadoInstanciaDocumento.EnProceso,
+            PasoActualId = primerPaso?.Id,
+            Estado = primerPaso is null ? EstadoInstanciaDocumento.Completado : EstadoInstanciaDocumento.EnProceso,
             NumeroReferencia = dto.NumeroReferencia,
             Proveedor = dto.Proveedor,
             Valor = valor,
@@ -203,18 +216,52 @@ public class InstanciaDocumentoService(
         db.HistorialAcciones.Add(new HistorialAccion
         {
             InstanciaDocumento = instancia,
-            PasoFlujoId = primerPaso.Id,
+            PasoFlujoId = primerPaso?.Id,
             UsuarioId = usuarioId,
             Accion = TipoAccion.Creado,
             Fecha = ahora
         });
+        if (primerPaso is null)
+            AprobarAutomaticamente(instancia, usuarioId, ahora);
 
         await db.SaveChangesAsync(ct);
-        if (notificar)
+        if (notificar && primerPaso is not null)
             await NotificarSinRomperAsync(() => notificacionService.NotificarPasoAsync(instancia.Id, primerPaso.Id, ct));
 
         return await ObtenerAsync(instancia.Id, ct);
     }
+
+    /// <summary>
+    /// Flujo sin pasos: aprobado al llegar. Si vino de World Office, además queda pendiente de
+    /// reflejar la aprobación allá (igual que cuando alguien aprueba el paso 1).
+    /// </summary>
+    private void AprobarAutomaticamente(InstanciaDocumento instancia, int usuarioId, DateTime ahora)
+    {
+        db.HistorialAcciones.Add(new HistorialAccion
+        {
+            InstanciaDocumento = instancia,
+            UsuarioId = usuarioId,
+            Accion = TipoAccion.AprobadoAutomatico,
+            Comentario = "Flujo sin pasos de aprobación: queda aprobado al llegar.",
+            Fecha = ahora
+        });
+        if (instancia.IdAsientoContableOrigen is not null && instancia.PrefijoOrigen is not null)
+            instancia.PendienteEscrituraWO = true;
+    }
+
+    /// <summary>
+    /// El usuario de WO de una persona EN LA EMPRESA del documento: en Ferrealiados es
+    /// UsuarioWOFerrealiados (o, si no lo tiene, el mismo UsuarioWO de Jimaco).
+    /// </summary>
+    internal static string? UsuarioWOEn(Usuario u, Empresa empresa) =>
+        empresa == Empresa.Ferrealiados && !string.IsNullOrWhiteSpace(u.UsuarioWOFerrealiados) ? u.UsuarioWOFerrealiados : u.UsuarioWO;
+
+    /// <summary>Usuarios cuyo usuario de WO (en la empresa del documento) es el solicitante.</summary>
+    private IQueryable<Usuario> UsuariosSolicitantes(InstanciaDocumento instancia) =>
+        instancia.Empresa == Empresa.Ferrealiados
+            ? db.Usuarios.Where(u => u.UsuarioWOFerrealiados == instancia.SolicitanteWO
+                || ((u.UsuarioWOFerrealiados == null || u.UsuarioWOFerrealiados == "") && u.UsuarioWO == instancia.SolicitanteWO))
+            : db.Usuarios.Where(u => u.UsuarioWO == instancia.SolicitanteWO);
 
     public async Task<InstanciaDocumentoDetalleDto> ObtenerAsync(int id, CancellationToken ct = default)
     {
@@ -243,12 +290,16 @@ public class InstanciaDocumentoService(
 
     public async Task<IReadOnlyList<InstanciaDocumentoResumenDto>> ListarMisDocumentosAsync(int usuarioId, CancellationToken ct = default)
     {
-        var usuarioWO = await db.Usuarios.Where(u => u.Id == usuarioId).Select(u => u.UsuarioWO).FirstOrDefaultAsync(ct);
+        var yo = await db.Usuarios.AsNoTracking().FirstOrDefaultAsync(u => u.Id == usuarioId, ct);
+        var usuarioWO = yo?.UsuarioWO;
+        var usuarioWOFerrealiados = yo is null ? null : UsuarioWOEn(yo, Empresa.Ferrealiados);
 
         var instancias = await db.InstanciasDocumento
             .Include(i => i.TipoDocumento)
             .Include(i => i.PasoActual)
-            .Where(i => (i.CreadoPorUsuarioId == usuarioId || (usuarioWO != null && i.SolicitanteWO == usuarioWO))
+            .Where(i => (i.CreadoPorUsuarioId == usuarioId
+                            || (i.Empresa == Empresa.Jimaco && usuarioWO != null && i.SolicitanteWO == usuarioWO)
+                            || (i.Empresa == Empresa.Ferrealiados && usuarioWOFerrealiados != null && i.SolicitanteWO == usuarioWOFerrealiados))
                         && i.TipoDocumento.PrefijoWorldOffice != CuentasPorPagarService.PrefijoPagoProveedor)
             .OrderByDescending(i => i.FechaCreacion)
             .ToListAsync(ct);
@@ -262,7 +313,7 @@ public class InstanciaDocumentoService(
     {
         if (instancia.CreadoPorUsuarioId == usuarioId) return true;
         if (string.IsNullOrWhiteSpace(instancia.SolicitanteWO)) return false;
-        return await db.Usuarios.AnyAsync(u => u.Id == usuarioId && u.UsuarioWO == instancia.SolicitanteWO, ct);
+        return await UsuariosSolicitantes(instancia).AnyAsync(u => u.Id == usuarioId, ct);
     }
 
     /// <summary>
@@ -535,7 +586,7 @@ public class InstanciaDocumentoService(
     {
         if (string.IsNullOrWhiteSpace(instancia.SolicitanteWO)) return;
 
-        var solicitante = await db.Usuarios.FirstOrDefaultAsync(u => u.UsuarioWO == instancia.SolicitanteWO, ct);
+        var solicitante = await UsuariosSolicitantes(instancia).FirstOrDefaultAsync(ct);
         if (solicitante is null) return;
 
         // Devuelto/Rechazado ya le llega a esa misma persona como aviso interno (con el motivo y
@@ -565,8 +616,8 @@ public class InstanciaDocumentoService(
     {
         if (!string.IsNullOrWhiteSpace(instancia.SolicitanteWO))
         {
-            var real = await db.Usuarios
-                .Where(u => u.UsuarioWO == instancia.SolicitanteWO && u.Activo)
+            var real = await UsuariosSolicitantes(instancia)
+                .Where(u => u.Activo)
                 .Select(u => (int?)u.Id)
                 .FirstOrDefaultAsync(ct);
             if (real is int id) return id;
@@ -812,12 +863,13 @@ public class InstanciaDocumentoService(
             throw new UnauthorizedAccessException("No tenés permiso para buscar/devolver cualquier documento.");
     }
 
-    public async Task<IReadOnlyList<PendienteEscrituraWODto>> ListarPendientesEscrituraWOAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<PendienteEscrituraWODto>> ListarPendientesEscrituraWOAsync(Empresa empresa = Empresa.Jimaco, CancellationToken ct = default)
     {
+        // Cada Sincronizador escribe SOLO en el World Office de su empresa.
         var pendientes = await db.InstanciasDocumento
             .Include(i => i.Historial).ThenInclude(h => h.PasoFlujo)
             .Include(i => i.Historial).ThenInclude(h => h.Usuario)
-            .Where(i => i.PendienteEscrituraWO && i.IdAsientoContableOrigen != null && i.PrefijoOrigen != null)
+            .Where(i => i.Empresa == empresa && i.PendienteEscrituraWO && i.IdAsientoContableOrigen != null && i.PrefijoOrigen != null)
             .ToListAsync(ct);
 
         return pendientes.Select(i =>
@@ -842,7 +894,7 @@ public class InstanciaDocumentoService(
                 .Where(h => h.Accion == accionBuscada && (accionBuscada == TipoAccion.Devuelto || h.PasoFlujo?.Orden == 1))
                 .MaxBy(h => h.Fecha);
 
-            var usuarioWO = accionPrimerPaso?.Usuario.UsuarioWO;
+            var usuarioWO = accionPrimerPaso is null ? null : UsuarioWOEn(accionPrimerPaso.Usuario, i.Empresa);
             if (string.IsNullOrWhiteSpace(usuarioWO))
                 usuarioWO = "JIMACO APROBACIONES"; // respaldo si esa persona no tiene usuario de WO configurado
 
@@ -878,10 +930,10 @@ public class InstanciaDocumentoService(
     // documento en WO, y empuja el resultado vía AdjuntarComprobanteEgresoAsync (o reporta que no
     // lo encontró vía ReportarConflictoComprobanteEgresoAsync). ----
 
-    public async Task<IReadOnlyList<PendienteComprobanteEgresoDto>> ListarPendientesComprobanteEgresoAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<PendienteComprobanteEgresoDto>> ListarPendientesComprobanteEgresoAsync(Empresa empresa = Empresa.Jimaco, CancellationToken ct = default)
     {
         var pendientes = await db.InstanciasDocumento
-            .Where(i => i.PendienteBusquedaComprobanteEgresoWO && i.NumeroComprobanteEgresoSolicitado != null)
+            .Where(i => i.Empresa == empresa && i.PendienteBusquedaComprobanteEgresoWO && i.NumeroComprobanteEgresoSolicitado != null)
             .ToListAsync(ct);
 
         return pendientes.Select(i => new PendienteComprobanteEgresoDto(i.Id, i.NumeroComprobanteEgresoSolicitado!)).ToList();
@@ -1113,7 +1165,7 @@ public class InstanciaDocumentoService(
         {
             var hermana = await db.DocumentosVinculados
                 .Include(d => d.Renglones).ThenInclude(r => r.DespachosRemision)
-                .Where(d => d.PrefijoOrigen == nueva.PrefijoOrigen && d.NumeroReferencia == nueva.NumeroReferencia)
+                .Where(d => d.Empresa == nueva.Empresa && d.PrefijoOrigen == nueva.PrefijoOrigen && d.NumeroReferencia == nueva.NumeroReferencia)
                 .OrderBy(d => d.Id)
                 .FirstOrDefaultAsync(ct);
             if (hermana is null) continue;
@@ -1211,7 +1263,7 @@ public class InstanciaDocumentoService(
 
     private static InstanciaDocumentoResumenDto MapearResumenDto(InstanciaDocumento i) => new(
         i.Id, i.TipoDocumento.Nombre, i.NumeroReferencia, i.Proveedor, i.Valor, i.FechaDocumento,
-        i.Estado, i.PasoActual?.Nombre, i.FechaCreacion);
+        i.Estado, i.PasoActual?.Nombre, i.FechaCreacion, i.Empresa.Nombre());
 
     /// <summary>"El emisor" (si corresponde, con el id de mentira DestinoEmisorId) + los pasos anteriores puntuales — mismo orden que usa el switch de EjecutarAccionAsync.</summary>
     private static List<PasoResumenDto> DestinosDevolucionDisponibles(PasoFlujo? paso)
