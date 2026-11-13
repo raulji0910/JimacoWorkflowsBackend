@@ -3,6 +3,8 @@ using Jimaco.Aprobaciones.Negocio.DTOs;
 using Jimaco.Aprobaciones.Negocio.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Controllers;
+using Microsoft.AspNetCore.Mvc.Filters;
 
 namespace Jimaco.Aprobaciones.Api.Controllers;
 
@@ -17,8 +19,34 @@ namespace Jimaco.Aprobaciones.Api.Controllers;
 [Route("api/[controller]")]
 [Authorize]
 public class SincronizacionController(IInstanciaDocumentoService instanciaService, IHojaAlistamientoService hojaAlistamientoService,
-    ICuentasPorPagarService cuentasPorPagarService, IConfiguracionCuentasPorPagarService configuracionCuentasPorPagarService) : ControllerBase
+    ICuentasPorPagarService cuentasPorPagarService, IConfiguracionCuentasPorPagarService configuracionCuentasPorPagarService) : ControllerBase, IActionFilter
 {
+    /// <summary>
+    /// Lo único que puede usar un Sincronizador que NO es el de Jimaco (2026-11-13): aprobaciones de OC
+    /// y Hojas de Alistamiento. Cuentas por pagar, CE, terceros y Entregas son solo de Jimaco — si a la
+    /// copia de Ferrealiados le quedara uno de esos módulos encendido por error, mezclaría datos de su
+    /// World Office con los de Jimaco (p. ej. reemplazaría la foto de cuentas por pagar). Lista blanca:
+    /// cualquier endpoint nuevo queda cerrado para otras empresas hasta que se agregue acá a propósito.
+    /// </summary>
+    private static readonly HashSet<string> PermitidosOtrasEmpresas =
+    [
+        nameof(ListarPendientesWO), nameof(ConfirmarWO), nameof(ReportarConflictoWO),
+        nameof(ListarPendientesRemision), nameof(MarcarRemisionada),
+        nameof(ListarPendientesRefresco), nameof(RefrescarHojaAlistamiento), nameof(CrearHojaAlistamientoSinOc)
+    ];
+
+    [NonAction]
+    public void OnActionExecuting(ActionExecutingContext context)
+    {
+        if (EmpresaSincronizador == Empresa.Jimaco) return;
+        var accion = (context.ActionDescriptor as ControllerActionDescriptor)?.ActionName;
+        if (accion is null || !PermitidosOtrasEmpresas.Contains(accion))
+            context.Result = BadRequest(new { mensaje = $"El Sincronizador de {EmpresaSincronizador.Nombre()} no puede usar \"{accion}\": ese módulo es solo de Jimaco. Apagalo en su appsettings." });
+    }
+
+    [NonAction]
+    public void OnActionExecuted(ActionExecutedContext context) { }
+
     /// <summary>
     /// Empresa del Sincronizador que llama (2026-11-13): encabezado <c>X-Empresa</c>. Sin encabezado
     /// = Jimaco, así el Sincronizador de Jimaco que ya está instalado sigue funcionando sin cambios.
