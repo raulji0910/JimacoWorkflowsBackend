@@ -45,6 +45,9 @@ var empresa = string.IsNullOrWhiteSpace(config["Empresa:Nombre"]) ? "Jimaco" : c
 var campoEntregaEnCotizacion = WorldOfficeReader.ColumnaPersonalizado(config["MapeoWO:CampoEntregaEnCotizacion"] ?? "Personalizado2");
 var observacionesEnOC = WorldOfficeReader.ColumnaPersonalizado(config["MapeoWO:ObservacionesAdicionalesEnOC"] ?? "Personalizado4");
 var cotizacionEnRemision = WorldOfficeReader.ColumnaPersonalizado(config["MapeoWO:CotizacionEnRemision"] ?? "Personalizado4");
+// Prefijo del CE que Contabilidad escribe solo con el número al aprobar el paso contable: Jimaco "CEJ",
+// Ferrealiados "CE" (confirmado en FERRALIADOS2026).
+var prefijoCEPorDefecto = string.IsNullOrWhiteSpace(config["MapeoWO:PrefijoCE"]) ? "CEJ" : config["MapeoWO:PrefijoCE"]!.Trim();
 Console.WriteLine($"[{DateTime.Now:s}] Empresa: {empresa} — COT en REM: {cotizacionEnRemision}, campo entrega en COT: {campoEntregaEnCotizacion}, observaciones en OC: {observacionesEnOC}.");
 
 var lector = new WorldOfficeReader(connectionStringWorldOffice);
@@ -374,7 +377,7 @@ foreach (var p in pendientesComprobante)
         // "15400" (escrito por Contabilidad, siempre CEJ) o "CEJ-2 22" (CE creado por el sistema,
         // que trae su prefijo porque en pruebas no es CEJ).
         var textoComprobante = p.NumeroComprobanteEgresoSolicitado.Trim();
-        var prefijoComprobante = "CEJ";
+        var prefijoComprobante = prefijoCEPorDefecto;
         var espacio = textoComprobante.LastIndexOf(' ');
         if (espacio > 0)
         {

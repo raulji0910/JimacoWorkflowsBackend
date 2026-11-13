@@ -19,20 +19,25 @@ namespace Jimaco.Aprobaciones.Negocio.Servicios;
 public class DocumentoPdfGenerador : IDocumentoPdfGenerador
 {
     private static readonly CultureInfo CulturaEsCo = CultureInfo.GetCultureInfo("es-CO");
-    private static readonly string VerdeEtiqueta = Colors.Green.Medium;
-
-    /// <summary>Logo, nombre, NIT y pie de cada empresa del grupo (2026-11-13, FERREALIADOS JV).</summary>
-    private sealed record Marca(byte[] Logo, string NombreEmpresa, string Nit, string PiePagina);
+    /// <summary>
+    /// Logo, nombre, NIT, pie y colores de cada empresa del grupo (2026-11-13, FERREALIADOS JV).
+    /// ColorEtiqueta = cajas de título/etiquetas; ColorClaro = encabezado de tablas; ColorPie = barra del pie.
+    /// </summary>
+    private sealed record Marca(byte[] Logo, string NombreEmpresa, string Nit, string PiePagina,
+        string ColorEtiqueta, string ColorClaro, string ColorPie);
 
     private static readonly Marca MarcaJimaco = new(
         CargarLogo("logo-jimaco.png"), "FERRETERIA INDUSTRIAL JIMACO", "900632353",
-        "Pbx: 601 378 29 33  --  Calle 23 # 25 - 06   compras@jimaco.com.co   -   www.jimaco.com.co");
+        "Pbx: 601 378 29 33  --  Calle 23 # 25 - 06   compras@jimaco.com.co   -   www.jimaco.com.co",
+        Colors.Green.Medium, Colors.Green.Lighten3, Colors.Green.Darken2);
 
-    // NIT confirmado en los XML de facturación de Ferrealiados (receptor 901342748). Sin dirección ni
-    // teléfono todavía: el pie lleva solo nombre y NIT hasta que el usuario los confirme.
+    // Datos y colores tomados de Ferrealiados Cotizaciones (appsettings "DatosEmpresa" y
+    // CotizacionPdfBuilder: azul #0A578D, naranja #F38138, azul claro #EAF1F5). Sin teléfono (allá
+    // también está vacío).
     private static readonly Marca MarcaFerrealiados = new(
-        CargarLogo("logo-ferrealiados.png"), "FERREALIADOS JV", "901342748",
-        "FERREALIADOS JV   -   NIT 901342748");
+        CargarLogo("logo-ferrealiados.png"), "FERREALIADOS JV", "901.342.748-6",
+        "CLL 15 25 20   -   Bogotá - Colombia   -   NIT 901.342.748-6",
+        "#0A578D", "#EAF1F5", "#F38138");
 
     // La marca del documento que se está generando (el generador es singleton: se pasa por llamada).
     [ThreadStatic] private static Marca? marcaActual;
@@ -287,7 +292,7 @@ public class DocumentoPdfGenerador : IDocumentoPdfGenerador
                     });
 
                     // ---- Pie de página con datos de contacto, como en el original ----
-                    col.Item().PaddingTop(8).Background(Colors.Green.Darken2).Padding(6)
+                    col.Item().PaddingTop(8).Background(M.ColorPie).Padding(6)
                         .AlignCenter().Text(M.PiePagina).FontColor(Colors.White).FontSize(8);
 
                     // ---- Historial de aprobación: esto SÍ es propio de Jimaco Aprobaciones, no existe en World Office ----
@@ -615,7 +620,7 @@ public class DocumentoPdfGenerador : IDocumentoPdfGenerador
         contenedor.Border(0.75f).BorderColor(Colors.Grey.Lighten1).Padding(3).DefaultTextStyle(x => x.FontSize(7.5f));
 
     private static void CeldaEncabezado(IContainer contenedor, string texto) =>
-        contenedor.Border(0.75f).Background(Colors.Green.Lighten3).Padding(3).Text(texto).Bold().FontSize(7.5f);
+        contenedor.Border(0.75f).Background(M.ColorClaro).Padding(3).Text(texto).Bold().FontSize(7.5f);
 
     private static void CeldaDato(IContainer contenedor, string texto) =>
         contenedor.Border(0.75f).BorderColor(Colors.Grey.Lighten1).Padding(3).Text(texto).FontSize(7.5f);
@@ -626,7 +631,7 @@ public class DocumentoPdfGenerador : IDocumentoPdfGenerador
     // Franja verde de etiqueta, igual que las cabeceras de sección de World Office (PROVEEDOR,
     // FECHA DOCUMENTO, etc.) — texto blanco en negrita sobre fondo verde, con borde fino.
     private static IContainer EtiquetaVerde(IContainer contenedor) =>
-        contenedor.Border(0.75f).Background(VerdeEtiqueta).Padding(4).DefaultTextStyle(x => x.FontColor(Colors.White).FontSize(8).Bold());
+        contenedor.Border(0.75f).Background(M.ColorEtiqueta).Padding(4).DefaultTextStyle(x => x.FontColor(Colors.White).FontSize(8).Bold());
 
     // Celda de valor: blanca con borde, como en el original (a diferencia de la primera versión,
     // que usaba fondo gris liso sin bordes).
