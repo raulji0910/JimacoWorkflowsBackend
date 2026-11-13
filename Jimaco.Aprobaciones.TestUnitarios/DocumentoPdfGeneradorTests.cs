@@ -119,6 +119,11 @@ public class DocumentoPdfGeneradorTests
 
         Assert.NotEmpty(pdf);
         Assert.Equal("%PDF", System.Text.Encoding.ASCII.GetString(pdf, 0, 4));
+
+        // 2026-11-13: la misma OC con su Hoja, pero de FERREALIADOS (logo, nombre y NIT propios).
+        var ferrealiados = new DocumentoPdfGenerador().Generar(documento with { Empresa = "Ferrealiados" });
+        Assert.Equal("%PDF", System.Text.Encoding.ASCII.GetString(ferrealiados, 0, 4));
+        Assert.NotEqual(pdf.Length, ferrealiados.Length);
     }
 
     [Fact]

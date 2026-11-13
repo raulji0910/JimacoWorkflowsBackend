@@ -1312,5 +1312,6 @@ public class InstanciaDocumentoService(
             i.SoportePagoAdjunto.Id, i.SoportePagoAdjunto.NombreArchivo, i.SoportePagoAdjunto.ContentType,
             i.SoportePagoAdjunto.TamanoBytes, i.SoportePagoAdjunto.FechaCarga),
         MapearPagoProveedor(i),
-        EsConfirmacionPagoProveedor(i, i.PasoActual));
+        EsConfirmacionPagoProveedor(i, i.PasoActual),
+        i.Empresa.Nombre());
 }

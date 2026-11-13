@@ -19,12 +19,24 @@ namespace Jimaco.Aprobaciones.Negocio.Servicios;
 public class DocumentoPdfGenerador : IDocumentoPdfGenerador
 {
     private static readonly CultureInfo CulturaEsCo = CultureInfo.GetCultureInfo("es-CO");
-    private static readonly byte[] Logo = CargarLogo();
     private static readonly string VerdeEtiqueta = Colors.Green.Medium;
 
-    private const string PiePagina = "Pbx: 601 378 29 33  --  Calle 23 # 25 - 06   compras@jimaco.com.co   -   www.jimaco.com.co";
-    private const string NitJimaco = "900632353";
-    private const string NombreEmpresa = "FERRETERIA INDUSTRIAL JIMACO";
+    /// <summary>Logo, nombre, NIT y pie de cada empresa del grupo (2026-11-13, FERREALIADOS JV).</summary>
+    private sealed record Marca(byte[] Logo, string NombreEmpresa, string Nit, string PiePagina);
+
+    private static readonly Marca MarcaJimaco = new(
+        CargarLogo("logo-jimaco.png"), "FERRETERIA INDUSTRIAL JIMACO", "900632353",
+        "Pbx: 601 378 29 33  --  Calle 23 # 25 - 06   compras@jimaco.com.co   -   www.jimaco.com.co");
+
+    // NIT confirmado en los XML de facturación de Ferrealiados (receptor 901342748). Sin dirección ni
+    // teléfono todavía: el pie lleva solo nombre y NIT hasta que el usuario los confirme.
+    private static readonly Marca MarcaFerrealiados = new(
+        CargarLogo("logo-ferrealiados.png"), "FERREALIADOS JV", "901342748",
+        "FERREALIADOS JV   -   NIT 901342748");
+
+    // La marca del documento que se está generando (el generador es singleton: se pasa por llamada).
+    [ThreadStatic] private static Marca? marcaActual;
+    private static Marca M => marcaActual ?? MarcaJimaco;
 
     // Claves conocidas de Datos que este formato ubica en su lugar "de siempre" (mismo layout que
     // World Office); cualquier otra clave que traiga el documento se muestra igual, más abajo, en
@@ -37,10 +49,10 @@ public class DocumentoPdfGenerador : IDocumentoPdfGenerador
     private const string ClaveNit = "nit";
     private const string ClaveDireccionProveedor = "direccionProveedor";
 
-    private static byte[] CargarLogo()
+    private static byte[] CargarLogo(string archivo)
     {
         var ensamblado = Assembly.GetExecutingAssembly();
-        using var stream = ensamblado.GetManifestResourceStream("Jimaco.Aprobaciones.Negocio.Recursos.logo-jimaco.png")
+        using var stream = ensamblado.GetManifestResourceStream($"Jimaco.Aprobaciones.Negocio.Recursos.{archivo}")
             ?? throw new InvalidOperationException("No se encontró el logo embebido.");
         using var memoria = new MemoryStream();
         stream.CopyTo(memoria);
@@ -48,6 +60,19 @@ public class DocumentoPdfGenerador : IDocumentoPdfGenerador
     }
 
     public byte[] Generar(InstanciaDocumentoDetalleDto d)
+    {
+        marcaActual = d.Empresa == "Ferrealiados" ? MarcaFerrealiados : MarcaJimaco;
+        try
+        {
+            return GenerarConMarca(d);
+        }
+        finally
+        {
+            marcaActual = null;
+        }
+    }
+
+    private byte[] GenerarConMarca(InstanciaDocumentoDetalleDto d)
     {
         var datos = d.Datos ?? [];
         var subtotal = d.Renglones.Sum(r => r.Total);
@@ -74,7 +99,7 @@ public class DocumentoPdfGenerador : IDocumentoPdfGenerador
                     // ---- Encabezado: logo + caja de título/número, estilo World Office ----
                     col.Item().Row(fila =>
                     {
-                        fila.ConstantItem(220).Height(85).Image(Logo).FitArea();
+                        fila.ConstantItem(220).Height(85).Image(M.Logo).FitArea();
                         fila.RelativeItem();
                         fila.ConstantItem(180).Table(tabla =>
                         {
@@ -263,7 +288,7 @@ public class DocumentoPdfGenerador : IDocumentoPdfGenerador
 
                     // ---- Pie de página con datos de contacto, como en el original ----
                     col.Item().PaddingTop(8).Background(Colors.Green.Darken2).Padding(6)
-                        .AlignCenter().Text(PiePagina).FontColor(Colors.White).FontSize(8);
+                        .AlignCenter().Text(M.PiePagina).FontColor(Colors.White).FontSize(8);
 
                     // ---- Historial de aprobación: esto SÍ es propio de Jimaco Aprobaciones, no existe en World Office ----
                     if (d.Historial.Count > 0)
@@ -333,11 +358,11 @@ public class DocumentoPdfGenerador : IDocumentoPdfGenerador
             // real de World Office, que se imprime así) ----
             col.Item().Row(fila =>
             {
-                fila.RelativeItem(1.6f).Text(NombreEmpresa).Bold().FontSize(10.5f);
+                fila.RelativeItem(1.6f).Text(M.NombreEmpresa).Bold().FontSize(10.5f);
                 fila.RelativeItem().AlignCenter().Text("HOJA ALISTAMIENTO").Bold().FontSize(11);
                 fila.RelativeItem().AlignRight().Text(v.NumeroReferencia).Bold().FontSize(11);
             });
-            col.Item().PaddingBottom(4).Text($"Nit {NitJimaco}").Bold();
+            col.Item().PaddingBottom(4).Text($"Nit {M.Nit}").Bold();
 
             // ---- Cliente / NIT / Dirección / Ciudad / Teléfono (izquierda) + Campo de entrega (derecha) ----
             col.Item().Row(fila =>
@@ -467,11 +492,11 @@ public class DocumentoPdfGenerador : IDocumentoPdfGenerador
 
             col.Item().Row(fila =>
             {
-                fila.RelativeItem(1.6f).Text(NombreEmpresa).Bold().FontSize(10.5f);
+                fila.RelativeItem(1.6f).Text(M.NombreEmpresa).Bold().FontSize(10.5f);
                 fila.RelativeItem().AlignCenter().Text("COMPROBANTE DE EGRESO").Bold().FontSize(11);
                 fila.RelativeItem().AlignRight().Text(c.NumeroReferencia).Bold().FontSize(11);
             });
-            col.Item().PaddingBottom(4).Text($"Nit {NitJimaco}").Bold();
+            col.Item().PaddingBottom(4).Text($"Nit {M.Nit}").Bold();
 
             // ---- Beneficiario / NIT / Dirección / Ciudad / Teléfono ----
             col.Item().Table(tabla =>

@@ -24,6 +24,7 @@
     <!-- Logo real de Jimaco para el PDF — embebido en el ensamblado (no un archivo suelto en
          disco) para que viaje con el .dll y no dependa de una ruta de filesystem en producción. -->
     <EmbeddedResource Include="Recursos\logo-jimaco.png" />
+    <EmbeddedResource Include="Recursos\logo-ferrealiados.png" />
   </ItemGroup>
 
 </Project>
