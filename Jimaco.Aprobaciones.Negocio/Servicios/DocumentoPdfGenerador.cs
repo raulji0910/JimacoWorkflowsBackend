@@ -84,6 +84,8 @@ public class DocumentoPdfGenerador : IDocumentoPdfGenerador
         var totalIva = d.Renglones.Sum(r => r.Total * r.PorcentajeIva);
         var total = subtotal + totalIva;
         var aprobadoPor = d.Historial.LastOrDefault(h => h.Accion == TipoAccion.Aprobado);
+        // Flujo sin pasos (crédito de Ferrealiados): nadie aprobó, quedó aprobado al llegar.
+        var aprobadoAutomatico = d.Historial.LastOrDefault(h => h.Accion == TipoAccion.AprobadoAutomatico);
 
         var otrosDatos = datos
             .Where(kv => kv.Key is not (ClaveDocExterno or ClaveElaboradoPor or ClaveFormaDePago or ClaveObservaciones or ClaveObservacionesAdicionales or ClaveNit or ClaveDireccionProveedor))
@@ -288,7 +290,9 @@ public class DocumentoPdfGenerador : IDocumentoPdfGenerador
                         tabla.Cell().Element(ValorConBorde).Text(datos.GetValueOrDefault(ClaveElaboradoPor, d.CreadoPorNombre));
                         tabla.Cell().Element(EtiquetaVerde).Text("APROBADO POR:");
                         tabla.Cell().Element(ValorConBorde)
-                            .Text(aprobadoPor is null ? "Pendiente" : $"{aprobadoPor.UsuarioNombre} ({aprobadoPor.Fecha.ToString("d MMM yyyy", CulturaEsCo)})");
+                            .Text(aprobadoPor is not null ? $"{aprobadoPor.UsuarioNombre} ({aprobadoPor.Fecha.ToString("d MMM yyyy", CulturaEsCo)})"
+                                : aprobadoAutomatico is not null ? $"Automático, sin aprobación ({aprobadoAutomatico.Fecha.ToString("d MMM yyyy", CulturaEsCo)})"
+                                : "Pendiente");
                     });
 
                     // ---- Pie de página con datos de contacto, como en el original ----
@@ -319,7 +323,7 @@ public class DocumentoPdfGenerador : IDocumentoPdfGenerador
                             {
                                 CeldaDato(tabla.Cell(), h.Fecha.ToString("d MMM yyyy HH:mm", CulturaEsCo));
                                 CeldaDato(tabla.Cell(), h.UsuarioNombre);
-                                CeldaDato(tabla.Cell(), h.Accion.ToString());
+                                CeldaDato(tabla.Cell(), h.Accion == TipoAccion.AprobadoAutomatico ? "Aprobado automáticamente" : h.Accion.ToString());
                                 CeldaDato(tabla.Cell(), h.Comentario ?? "");
                             }
                         });
