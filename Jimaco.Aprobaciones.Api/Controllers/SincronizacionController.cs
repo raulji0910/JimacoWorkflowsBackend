@@ -1,3 +1,4 @@
+using Jimaco.Aprobaciones.Modelo.Entidades;
 using Jimaco.Aprobaciones.Negocio.DTOs;
 using Jimaco.Aprobaciones.Negocio.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -19,9 +20,16 @@ public class SincronizacionController(IInstanciaDocumentoService instanciaServic
     ICuentasPorPagarService cuentasPorPagarService, IConfiguracionCuentasPorPagarService configuracionCuentasPorPagarService,
     IRemisionService remisionService) : ControllerBase
 {
+    /// <summary>
+    /// Empresa del Sincronizador que llama (2026-11-13): encabezado <c>X-Empresa</c>. Sin encabezado
+    /// = Jimaco, así el Sincronizador de Jimaco que ya está instalado sigue funcionando sin cambios.
+    /// Cada Sincronizador solo ve y toca lo de SU empresa (su World Office).
+    /// </summary>
+    private Empresa EmpresaSincronizador => EmpresaExtensions.Parsear(Request.Headers["X-Empresa"].FirstOrDefault());
+
     [HttpGet("pendientes-wo")]
     public async Task<ActionResult<IReadOnlyList<PendienteEscrituraWODto>>> ListarPendientesWO(CancellationToken ct) =>
-        Ok(await instanciaService.ListarPendientesEscrituraWOAsync(ct));
+        Ok(await instanciaService.ListarPendientesEscrituraWOAsync(EmpresaSincronizador, ct));
 
     [HttpPost("pendientes-wo/{id:int}/confirmar")]
     public async Task<IActionResult> ConfirmarWO(int id, CancellationToken ct)
@@ -41,7 +49,7 @@ public class SincronizacionController(IInstanciaDocumentoService instanciaServic
 
     [HttpGet("pendientes-comprobante-egreso")]
     public async Task<ActionResult<IReadOnlyList<PendienteComprobanteEgresoDto>>> ListarPendientesComprobanteEgreso(CancellationToken ct) =>
-        Ok(await instanciaService.ListarPendientesComprobanteEgresoAsync(ct));
+        Ok(await instanciaService.ListarPendientesComprobanteEgresoAsync(EmpresaSincronizador, ct));
 
     [HttpPost("pendientes-comprobante-egreso/{id:int}/encontrado")]
     public async Task<IActionResult> AdjuntarComprobanteEgreso(int id, ComprobanteEgresoEncontradoDto dto, CancellationToken ct)
@@ -61,12 +69,12 @@ public class SincronizacionController(IInstanciaDocumentoService instanciaServic
 
     [HttpGet("pendientes-remision")]
     public async Task<ActionResult<IReadOnlyList<PendienteRemisionDto>>> ListarPendientesRemision(CancellationToken ct) =>
-        Ok(await hojaAlistamientoService.ListarPendientesRemisionAsync(ct));
+        Ok(await hojaAlistamientoService.ListarPendientesRemisionAsync(ct, EmpresaSincronizador));
 
     [HttpPost("pendientes-remision/marcar")]
     public async Task<IActionResult> MarcarRemisionada(MarcarRemisionadaDto dto, CancellationToken ct)
     {
-        await hojaAlistamientoService.MarcarRemisionadaAsync(dto, ct);
+        await hojaAlistamientoService.MarcarRemisionadaAsync(dto, ct, EmpresaSincronizador);
         return Ok();
     }
 
@@ -74,12 +82,12 @@ public class SincronizacionController(IInstanciaDocumentoService instanciaServic
 
     [HttpGet("hojas-alistamiento/pendientes-refresco")]
     public async Task<ActionResult<IReadOnlyList<PendienteRefrescoDto>>> ListarPendientesRefresco(CancellationToken ct) =>
-        Ok(await hojaAlistamientoService.ListarPendientesRefrescoAsync(ct));
+        Ok(await hojaAlistamientoService.ListarPendientesRefrescoAsync(ct, EmpresaSincronizador));
 
     [HttpPost("hojas-alistamiento/refrescar")]
     public async Task<IActionResult> RefrescarHojaAlistamiento(DocumentoVinculadoInputDto dto, CancellationToken ct)
     {
-        await hojaAlistamientoService.RefrescarDesdeWOAsync(dto, ct);
+        await hojaAlistamientoService.RefrescarDesdeWOAsync(dto, ct, EmpresaSincronizador);
         return Ok();
     }
 
@@ -88,7 +96,7 @@ public class SincronizacionController(IInstanciaDocumentoService instanciaServic
     [HttpPost("hojas-alistamiento/crear-sin-oc")]
     public async Task<IActionResult> CrearHojaAlistamientoSinOc(DocumentoVinculadoInputDto dto, CancellationToken ct)
     {
-        await hojaAlistamientoService.CrearSinOcAsync(dto, ct);
+        await hojaAlistamientoService.CrearSinOcAsync(dto, ct, EmpresaSincronizador);
         return Ok();
     }
 

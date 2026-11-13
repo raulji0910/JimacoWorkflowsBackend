@@ -14,7 +14,8 @@ public class RolService(AppDbContext db) : IRolService
             .Select(r => new RolDto(
                 r.Id, r.Nombre, r.Descripcion, r.Activo,
                 r.PuedeDevolverCualquierDocumento, r.PuedeGestionarAlistamiento, r.PuedeVerAlistamiento, r.PuedeVerCuentasPorPagar, r.PuedePagarCuentas,
-                r.PuedeGestionarEntregas, r.PuedeVerEntregas, r.PuedeDocumentarEntregas, r.PuedeFacturarEntregas))
+                r.PuedeGestionarEntregas, r.PuedeVerEntregas, r.PuedeDocumentarEntregas, r.PuedeFacturarEntregas,
+                r.PuedeGestionarAlistamientoFerrealiados, r.PuedeVerAlistamientoFerrealiados))
             .ToListAsync(ct);
 
     public async Task<RolDto> CrearAsync(CrearRolDto dto, CancellationToken ct = default)
@@ -35,7 +36,9 @@ public class RolService(AppDbContext db) : IRolService
             PuedeGestionarEntregas = dto.PuedeGestionarEntregas,
             PuedeVerEntregas = dto.PuedeVerEntregas,
             PuedeDocumentarEntregas = dto.PuedeDocumentarEntregas,
-            PuedeFacturarEntregas = dto.PuedeFacturarEntregas
+            PuedeFacturarEntregas = dto.PuedeFacturarEntregas,
+            PuedeGestionarAlistamientoFerrealiados = dto.PuedeGestionarAlistamientoFerrealiados,
+            PuedeVerAlistamientoFerrealiados = dto.PuedeVerAlistamientoFerrealiados
         };
         db.Roles.Add(rol);
         await db.SaveChangesAsync(ct);
@@ -63,6 +66,8 @@ public class RolService(AppDbContext db) : IRolService
         rol.PuedeVerEntregas = dto.PuedeVerEntregas;
         rol.PuedeDocumentarEntregas = dto.PuedeDocumentarEntregas;
         rol.PuedeFacturarEntregas = dto.PuedeFacturarEntregas;
+        rol.PuedeGestionarAlistamientoFerrealiados = dto.PuedeGestionarAlistamientoFerrealiados;
+        rol.PuedeVerAlistamientoFerrealiados = dto.PuedeVerAlistamientoFerrealiados;
         await db.SaveChangesAsync(ct);
 
         return MapearDto(rol);
@@ -71,5 +76,6 @@ public class RolService(AppDbContext db) : IRolService
     private static RolDto MapearDto(Rol rol) => new(
         rol.Id, rol.Nombre, rol.Descripcion, rol.Activo,
         rol.PuedeDevolverCualquierDocumento, rol.PuedeGestionarAlistamiento, rol.PuedeVerAlistamiento, rol.PuedeVerCuentasPorPagar, rol.PuedePagarCuentas,
-        rol.PuedeGestionarEntregas, rol.PuedeVerEntregas, rol.PuedeDocumentarEntregas, rol.PuedeFacturarEntregas);
+        rol.PuedeGestionarEntregas, rol.PuedeVerEntregas, rol.PuedeDocumentarEntregas, rol.PuedeFacturarEntregas,
+        rol.PuedeGestionarAlistamientoFerrealiados, rol.PuedeVerAlistamientoFerrealiados);
 }

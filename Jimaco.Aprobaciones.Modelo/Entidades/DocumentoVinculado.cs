@@ -23,6 +23,12 @@ public class DocumentoVinculado
     public InstanciaDocumento? InstanciaDocumento { get; set; }
 
     /// <summary>Prefijo real en WO del documento ligado (ej. "COT") — igual que <see cref="InstanciaDocumento.PrefijoOrigen"/>, para saber qué plantilla de impresión usar si en el futuro se agregan otros tipos de documento ligado.</summary>
+    /// <summary>
+    /// Empresa de esta Hoja de Alistamiento (2026-11-13): la COT 894 de Ferrealiados no es la COT 894
+    /// de Jimaco. Todo agrupamiento por (PrefijoOrigen, NumeroReferencia) va además por Empresa.
+    /// </summary>
+    public Empresa Empresa { get; set; } = Empresa.Jimaco;
+
     [MaxLength(20)]
     public required string PrefijoOrigen { get; set; }
 

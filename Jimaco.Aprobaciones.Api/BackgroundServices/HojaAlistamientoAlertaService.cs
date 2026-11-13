@@ -60,8 +60,7 @@ public class HojaAlistamientoAlertaService(IServiceScopeFactory scopeFactory, IC
             .Where(d => d.Renglones.Any(r => r.CantidadDisponible < r.Cantidad))
             .Where(d => d.InstanciaDocumentoId == null || db.HistorialAcciones.Any(h =>
                 h.InstanciaDocumentoId == d.InstanciaDocumentoId &&
-                h.Accion == TipoAccion.Aprobado &&
-                h.PasoFlujo!.Orden == 1))
+                ((h.Accion == TipoAccion.Aprobado && h.PasoFlujo!.Orden == 1) || h.Accion == TipoAccion.AprobadoAutomatico)))
             .ToListAsync(ct);
 
         var huboAvisos = false;
@@ -69,7 +68,7 @@ public class HojaAlistamientoAlertaService(IServiceScopeFactory scopeFactory, IC
         // DocumentoVinculado por cada una) — para este control es una sola hoja, así que se manda
         // UN solo aviso por grupo, no uno por cada OC que la comparte (pedido explícito del usuario,
         // 2026-09-29). Ver el mismo criterio de agrupación en HojaAlistamientoService.
-        foreach (var grupo in incompletas.GroupBy(d => (d.PrefijoOrigen, d.NumeroReferencia)))
+        foreach (var grupo in incompletas.GroupBy(d => (d.Empresa, d.PrefijoOrigen, d.NumeroReferencia)))
         {
             var representante = grupo.OrderBy(d => d.Id).First();
             var antiguedad = ahora - representante.FechaCreacion;

@@ -22,4 +22,7 @@ public record LoginResponseDto(string Token, string Nombre, string Email, IReadO
     // Fase 2 (2026-11-13): emisor que adjunta documentos para facturar / contable que factura.
     // PuedeVerEntregas ya viene en true si tiene cualquiera de los cuatro (muestra el menú).
     bool PuedeDocumentarEntregas = false,
-    bool PuedeFacturarEntregas = false);
+    bool PuedeFacturarEntregas = false,
+    // Dashboard "Alistamiento Ferrealiados" (2026-11-13) — ver Rol.PuedeGestionarAlistamientoFerrealiados.
+    bool PuedeGestionarAlistamientoFerrealiados = false,
+    bool PuedeVerAlistamientoFerrealiados = false);

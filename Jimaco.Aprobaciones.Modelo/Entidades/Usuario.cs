@@ -30,6 +30,14 @@ public class Usuario
     public string? UsuarioWO { get; set; }
 
     /// <summary>
+    /// Usuario de esta persona en el World Office de FERREALIADOS (otra base, otros usuarios) — con
+    /// este nombre queda la aprobación allá. Vacío = se usa <see cref="UsuarioWO"/> y, si tampoco
+    /// hay, el texto de respaldo.
+    /// </summary>
+    [MaxLength(100)]
+    public string? UsuarioWOFerrealiados { get; set; }
+
+    /// <summary>
     /// Uno o varios nombres completos (separados por ";") tal como World Office los pone en
     /// "Elaborado por" de una Cotización (ej. "LAURA SOFIA HERNANDEZ CARO") — distinto de
     /// <see cref="UsuarioWO"/>, que es el nombre corto. Esta persona recibe los avisos por correo de

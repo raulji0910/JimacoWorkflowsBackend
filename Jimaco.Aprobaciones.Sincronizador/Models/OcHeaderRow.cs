@@ -37,6 +37,21 @@ public class OcHeaderRow
     /// </summary>
     public string? Personalizado4 { get; set; }
 
+    // 2026-11-13 (Ferrealiados): cada empresa usa los personalizados para cosas distintas, así que se
+    // traen los cuatro y Program.cs elige cuál según la sección "MapeoWO" del appsettings.
+    public string? Personalizado1 { get; set; }
+    public string? Personalizado3 { get; set; }
+
+    /// <summary>El campo personalizado indicado ("Personalizado1".."Personalizado4"); null si no existe.</summary>
+    public string? Personalizado(string columna) => columna switch
+    {
+        "Personalizado1" => Personalizado1,
+        "Personalizado2" => Personalizado2,
+        "Personalizado3" => Personalizado3,
+        "Personalizado4" => Personalizado4,
+        _ => null
+    };
+
     /// <summary>
     /// Usuario de WO que mandó el documento a aprobar (columna <c>IdUsuarioWO</c> — a pesar del
     /// nombre es texto libre, el usuario de sesión, ej. "LADY CARDONA"), NO necesariamente quien

@@ -12,9 +12,9 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
     private double HorasUmbralAlerta =>
         double.TryParse(configuration["Alistamiento:HorasUmbralAlerta"], out var horas) ? horas : 2;
 
-    public async Task<IReadOnlyList<HojaAlistamientoResumenDto>> ListarAsync(int usuarioId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<HojaAlistamientoResumenDto>> ListarAsync(int usuarioId, CancellationToken ct = default, Empresa empresa = Empresa.Jimaco)
     {
-        await ExigirPermisoAsync(usuarioId, gestionar: false, ct);
+        await ExigirPermisoAsync(usuarioId, gestionar: false, empresa, ct);
 
         var ahora = timeProvider.GetUtcNow().UtcDateTime;
         var horasUmbral = HorasUmbralAlerta;
@@ -30,17 +30,17 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
         var hojas = await db.DocumentosVinculados
             .Include(d => d.InstanciaDocumento)
             .Include(d => d.Renglones).ThenInclude(r => r.DespachosRemision)
+            .Where(d => d.Empresa == empresa)
             .Where(d => d.InstanciaDocumentoId == null || db.HistorialAcciones.Any(h =>
                 h.InstanciaDocumentoId == d.InstanciaDocumentoId &&
-                h.Accion == TipoAccion.Aprobado &&
-                h.PasoFlujo!.Orden == 1))
+                ((h.Accion == TipoAccion.Aprobado && h.PasoFlujo!.Orden == 1) || h.Accion == TipoAccion.AprobadoAutomatico)))
             .ToListAsync(ct);
 
         if (hojas.Count == 0) return [];
 
         var idsHojas = hojas.Where(d => d.InstanciaDocumentoId != null).Select(d => d.InstanciaDocumentoId!.Value).ToHashSet();
         var fechasAprobacion = await db.HistorialAcciones
-            .Where(h => idsHojas.Contains(h.InstanciaDocumentoId) && h.Accion == TipoAccion.Aprobado && h.PasoFlujo!.Orden == 1)
+            .Where(h => idsHojas.Contains(h.InstanciaDocumentoId) && ((h.Accion == TipoAccion.Aprobado && h.PasoFlujo!.Orden == 1) || h.Accion == TipoAccion.AprobadoAutomatico))
             .GroupBy(h => h.InstanciaDocumentoId)
             .Select(g => new { InstanciaDocumentoId = g.Key, Fecha = g.Max(h => h.Fecha) })
             .ToDictionaryAsync(x => x.InstanciaDocumentoId, x => x.Fecha, ct);
@@ -85,18 +85,17 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
 
     public async Task<HojaAlistamientoDetalleDto> ObtenerAsync(int documentoVinculadoId, int usuarioId, CancellationToken ct = default)
     {
-        await ExigirPermisoAsync(usuarioId, gestionar: false, ct);
-
         var hoja = await db.DocumentosVinculados
             .Include(d => d.Renglones).ThenInclude(r => r.DespachosRemision)
             .FirstOrDefaultAsync(d => d.Id == documentoVinculadoId, ct)
             ?? throw new KeyNotFoundException("Hoja de Alistamiento no encontrada.");
+        await ExigirPermisoAsync(usuarioId, gestionar: false, hoja.Empresa, ct);
 
         // Se buscan TODAS las copias que comparten Prefijo+Número (misma Cotización real de WO
         // ligada a más de una OC) para fusionarlas en una sola vista — ver la nota en ListarAsync.
         var grupo = await db.DocumentosVinculados
             .Include(d => d.InstanciaDocumento)
-            .Where(d => d.PrefijoOrigen == hoja.PrefijoOrigen && d.NumeroReferencia == hoja.NumeroReferencia)
+            .Where(d => d.Empresa == hoja.Empresa && d.PrefijoOrigen == hoja.PrefijoOrigen && d.NumeroReferencia == hoja.NumeroReferencia)
             .ToListAsync(ct);
 
         var fechasAprobacion = new List<DateTime>();
@@ -140,12 +139,11 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
 
     public async Task ActualizarCantidadesAsync(int documentoVinculadoId, int usuarioId, ActualizarCantidadesDisponiblesDto dto, CancellationToken ct = default)
     {
-        await ExigirPermisoAsync(usuarioId, gestionar: true, ct);
-
         var hoja = await db.DocumentosVinculados
             .Include(d => d.Renglones)
             .FirstOrDefaultAsync(d => d.Id == documentoVinculadoId, ct)
             ?? throw new KeyNotFoundException("Hoja de Alistamiento no encontrada.");
+        await ExigirPermisoAsync(usuarioId, gestionar: true, hoja.Empresa, ct);
 
         // Sin OC asociada no hay aprobación comercial que exigir — está disponible desde que se creó.
         if (hoja.InstanciaDocumentoId is int idInstanciaHoja && await ObtenerFechaAprobacionComercialAsync(idInstanciaHoja, ct) is null)
@@ -158,7 +156,7 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
         // Código (o por Orden si el ítem no trae código).
         var grupo = await db.DocumentosVinculados
             .Include(d => d.Renglones).ThenInclude(r => r.DespachosRemision)
-            .Where(d => d.PrefijoOrigen == hoja.PrefijoOrigen && d.NumeroReferencia == hoja.NumeroReferencia)
+            .Where(d => d.Empresa == hoja.Empresa && d.PrefijoOrigen == hoja.PrefijoOrigen && d.NumeroReferencia == hoja.NumeroReferencia)
             .ToListAsync(ct);
 
         var nombreUsuario = await db.Usuarios.Where(u => u.Id == usuarioId).Select(u => u.Nombre).FirstOrDefaultAsync(ct);
@@ -194,6 +192,7 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
             if (renglon.CantidadDisponible != cambio.CantidadDisponible)
                 db.HistorialDisponible.Add(new HistorialDisponible
                 {
+                    Empresa = hoja.Empresa,
                     PrefijoOrigen = hoja.PrefijoOrigen,
                     NumeroReferencia = hoja.NumeroReferencia,
                     Codigo = renglon.Codigo,
@@ -224,12 +223,12 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
     // el Sincronizador pide esta lista y, por cada una, revisa en WO si ya existe una Remisión que
     // la cruce (campo libre "COTIZACION", texto a mano — ver nota en DocumentoVinculado). ----
 
-    public async Task<IReadOnlyList<PendienteRemisionDto>> ListarPendientesRemisionAsync(CancellationToken ct = default) =>
+    public async Task<IReadOnlyList<PendienteRemisionDto>> ListarPendientesRemisionAsync(CancellationToken ct = default, Empresa empresa = Empresa.Jimaco) =>
         await db.DocumentosVinculados
+            .Where(d => d.Empresa == empresa)
             .Where(d => d.Renglones.Any(r => r.DespachosRemision.Sum(x => x.CantidadRemisionada) < r.Cantidad) && (d.InstanciaDocumentoId == null || db.HistorialAcciones.Any(h =>
                 h.InstanciaDocumentoId == d.InstanciaDocumentoId &&
-                h.Accion == TipoAccion.Aprobado &&
-                h.PasoFlujo!.Orden == 1)))
+                ((h.Accion == TipoAccion.Aprobado && h.PasoFlujo!.Orden == 1) || h.Accion == TipoAccion.AprobadoAutomatico))))
             .Select(d => new { d.PrefijoOrigen, d.NumeroReferencia })
             .Distinct()
             .Select(d => new PendienteRemisionDto(d.PrefijoOrigen, d.NumeroReferencia))
@@ -240,12 +239,12 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
     // lo que dejaba de refrescar una Hoja apenas se marcaba Remisionada aunque Transporte siguiera
     // sin terminarla (caso real: Hoja 16159). ----
 
-    public async Task<IReadOnlyList<PendienteRefrescoDto>> ListarPendientesRefrescoAsync(CancellationToken ct = default) =>
+    public async Task<IReadOnlyList<PendienteRefrescoDto>> ListarPendientesRefrescoAsync(CancellationToken ct = default, Empresa empresa = Empresa.Jimaco) =>
         await db.DocumentosVinculados
+            .Where(d => d.Empresa == empresa)
             .Where(d => d.Renglones.Any(r => r.CantidadDisponible < r.Cantidad) && (d.InstanciaDocumentoId == null || db.HistorialAcciones.Any(h =>
                 h.InstanciaDocumentoId == d.InstanciaDocumentoId &&
-                h.Accion == TipoAccion.Aprobado &&
-                h.PasoFlujo!.Orden == 1)))
+                ((h.Accion == TipoAccion.Aprobado && h.PasoFlujo!.Orden == 1) || h.Accion == TipoAccion.AprobadoAutomatico))))
             .Select(d => new { d.PrefijoOrigen, d.NumeroReferencia })
             .Distinct()
             .Select(d => new PendienteRefrescoDto(d.PrefijoOrigen, d.NumeroReferencia))
@@ -257,15 +256,16 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
     // agua propia) y llama acá por cada una que todavía no exista en nuestro sistema — no importa si
     // más adelante SÍ llega a tener una OC real: ese caso normal sigue entrando por
     // InstanciaDocumentoService.ConstruirDocumentosVinculados, como siempre.
-    public async Task CrearSinOcAsync(DocumentoVinculadoInputDto dto, CancellationToken ct = default)
+    public async Task CrearSinOcAsync(DocumentoVinculadoInputDto dto, CancellationToken ct = default, Empresa empresa = Empresa.Jimaco)
     {
         var yaExiste = await db.DocumentosVinculados
-            .AnyAsync(d => d.PrefijoOrigen == dto.PrefijoOrigen && d.NumeroReferencia == dto.NumeroReferencia, ct);
+            .AnyAsync(d => d.Empresa == empresa && d.PrefijoOrigen == dto.PrefijoOrigen && d.NumeroReferencia == dto.NumeroReferencia, ct);
         if (yaExiste) return;
 
         var ahora = timeProvider.GetUtcNow().UtcDateTime;
         db.DocumentosVinculados.Add(new DocumentoVinculado
         {
+            Empresa = empresa,
             PrefijoOrigen = dto.PrefijoOrigen,
             NumeroReferencia = dto.NumeroReferencia,
             Fecha = dto.Fecha,
@@ -302,13 +302,13 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
     // cantidad, leídos de WO igual que los de Cotización/OC) y acá se cruzan por Código contra los
     // renglones de la Hoja — mismo criterio de posición (n-ésima ocurrencia de un código) que
     // ActualizarCantidadesAsync, para el caso de ítems repetidos dentro de la misma Hoja.
-    public async Task MarcarRemisionadaAsync(MarcarRemisionadaDto dto, CancellationToken ct = default)
+    public async Task MarcarRemisionadaAsync(MarcarRemisionadaDto dto, CancellationToken ct = default, Empresa empresa = Empresa.Jimaco)
     {
         // Mismo criterio de grupo que ActualizarCantidadesAsync: todas las copias que comparten
         // Prefijo+Número reciben el despacho a la vez, sin importar por cuál OC se detectó.
         var copias = await db.DocumentosVinculados
             .Include(d => d.Renglones).ThenInclude(r => r.DespachosRemision)
-            .Where(d => d.PrefijoOrigen == dto.PrefijoOrigen && d.NumeroReferencia == dto.NumeroReferencia)
+            .Where(d => d.Empresa == empresa && d.PrefijoOrigen == dto.PrefijoOrigen && d.NumeroReferencia == dto.NumeroReferencia)
             .ToListAsync(ct);
 
         if (copias.Count == 0) return;
@@ -400,11 +400,11 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
     // siendo los mismos (mismo criterio de desambiguación por código+posición que el fix de ítems
     // duplicados de ActualizarCantidadesAsync — repetido acá a propósito, no compartido, para no
     // tocar ese método ya probado).
-    public async Task RefrescarDesdeWOAsync(DocumentoVinculadoInputDto dto, CancellationToken ct = default)
+    public async Task RefrescarDesdeWOAsync(DocumentoVinculadoInputDto dto, CancellationToken ct = default, Empresa empresa = Empresa.Jimaco)
     {
         var grupo = await db.DocumentosVinculados
             .Include(d => d.Renglones).ThenInclude(r => r.DespachosRemision)
-            .Where(d => d.PrefijoOrigen == dto.PrefijoOrigen && d.NumeroReferencia == dto.NumeroReferencia)
+            .Where(d => d.Empresa == empresa && d.PrefijoOrigen == dto.PrefijoOrigen && d.NumeroReferencia == dto.NumeroReferencia)
             .ToListAsync(ct);
 
         if (grupo.Count == 0) return; // ya no queda ninguna copia activa de esta hoja — nada que refrescar
@@ -412,7 +412,7 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
         // Progreso "en depósito" de ítems que en lecturas anteriores desaparecieron de la Cotización
         // (ver HistorialDisponible.OrigenRetiradoEnWO) — se devuelve si el Código reaparece.
         var depositos = await db.HistorialDisponible
-            .Where(h => h.PrefijoOrigen == dto.PrefijoOrigen && h.NumeroReferencia == dto.NumeroReferencia
+            .Where(h => h.Empresa == empresa && h.PrefijoOrigen == dto.PrefijoOrigen && h.NumeroReferencia == dto.NumeroReferencia
                         && h.Origen == HistorialDisponible.OrigenRetiradoEnWO && h.CantidadPorRestaurar > 0)
             .OrderBy(h => h.Id)
             .ToListAsync(ct);
@@ -503,6 +503,7 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
             if (registrarEn is not { } fecha) return;
             db.HistorialDisponible.Add(new HistorialDisponible
             {
+                Empresa = copia.Empresa,
                 PrefijoOrigen = copia.PrefijoOrigen,
                 NumeroReferencia = copia.NumeroReferencia,
                 Codigo = codigo,
@@ -660,19 +661,26 @@ public class HojaAlistamientoService(AppDbContext db, IConfiguration configurati
     // una vez, cuenta la aprobación más reciente como el arranque del ciclo actual.
     private async Task<DateTime?> ObtenerFechaAprobacionComercialAsync(int instanciaDocumentoId, CancellationToken ct) =>
         await db.HistorialAcciones
-            .Where(h => h.InstanciaDocumentoId == instanciaDocumentoId && h.Accion == TipoAccion.Aprobado && h.PasoFlujo!.Orden == 1)
+            .Where(h => h.InstanciaDocumentoId == instanciaDocumentoId && ((h.Accion == TipoAccion.Aprobado && h.PasoFlujo!.Orden == 1) || h.Accion == TipoAccion.AprobadoAutomatico))
             .Select(h => (DateTime?)h.Fecha)
             .MaxAsync(ct);
 
-    private async Task ExigirPermisoAsync(int usuarioId, bool gestionar, CancellationToken ct)
+    private async Task ExigirPermisoAsync(int usuarioId, bool gestionar, Empresa empresa, CancellationToken ct)
     {
-        var tienePermiso = await db.UsuarioRoles
-            .Where(ur => ur.UsuarioId == usuarioId)
-            .AnyAsync(ur => ur.Rol.Activo && (gestionar
+        // Cada empresa tiene sus propios permisos de alistamiento (2026-11-13) — el dashboard de
+        // Ferrealiados es aparte y solo lo ve quien tenga los permisos "…Ferrealiados".
+        var roles = db.UsuarioRoles.Where(ur => ur.UsuarioId == usuarioId && ur.Rol.Activo);
+        var tienePermiso = empresa == Empresa.Ferrealiados
+            ? await roles.AnyAsync(ur => gestionar
+                ? ur.Rol.PuedeGestionarAlistamientoFerrealiados
+                : ur.Rol.PuedeGestionarAlistamientoFerrealiados || ur.Rol.PuedeVerAlistamientoFerrealiados, ct)
+            : await roles.AnyAsync(ur => gestionar
                 ? ur.Rol.PuedeGestionarAlistamiento
-                : ur.Rol.PuedeGestionarAlistamiento || ur.Rol.PuedeVerAlistamiento), ct);
+                : ur.Rol.PuedeGestionarAlistamiento || ur.Rol.PuedeVerAlistamiento, ct);
 
         if (!tienePermiso)
-            throw new UnauthorizedAccessException("No tenés permiso para el control de alistamiento.");
+            throw new UnauthorizedAccessException(empresa == Empresa.Ferrealiados
+                ? "No tenés permiso para el control de alistamiento de Ferrealiados."
+                : "No tenés permiso para el control de alistamiento.");
     }
 }

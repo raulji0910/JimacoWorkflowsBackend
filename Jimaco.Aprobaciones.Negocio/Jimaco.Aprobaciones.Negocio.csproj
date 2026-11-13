@@ -27,6 +27,7 @@
          disco) para que viaje con el .dll y no dependa de una ruta de filesystem en producción. -->
     <EmbeddedResource Include="Recursos\logo-jimaco.png" />
     <EmbeddedResource Include="Recursos\sello-sgs.png" />
+    <EmbeddedResource Include="Recursos\logo-ferrealiados.png" />
   </ItemGroup>
 
 </Project>

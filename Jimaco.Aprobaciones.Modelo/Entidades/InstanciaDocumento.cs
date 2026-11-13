@@ -30,6 +30,9 @@ public class InstanciaDocumento
     public int TipoDocumentoId { get; set; }
     public TipoDocumento TipoDocumento { get; set; } = null!;
 
+    /// <summary>Empresa dueña del documento — copia de <see cref="TipoDocumento.Empresa"/> al crearlo (ver <see cref="Entidades.Empresa"/>).</summary>
+    public Empresa Empresa { get; set; } = Empresa.Jimaco;
+
     public int DefinicionFlujoId { get; set; }
     public DefinicionFlujo DefinicionFlujo { get; set; } = null!;
 

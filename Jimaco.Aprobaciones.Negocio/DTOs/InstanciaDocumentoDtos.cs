@@ -79,7 +79,9 @@ public record InstanciaDocumentoResumenDto(
     DateTime? FechaDocumento,
     EstadoInstanciaDocumento Estado,
     string? PasoActualNombre,
-    DateTime FechaCreacion);
+    DateTime FechaCreacion,
+    /// <summary>"Jimaco" o "Ferrealiados" (2026-11-13) — etiqueta en las listas.</summary>
+    string Empresa = "Jimaco");
 
 public record RenglonDocumentoVinculadoDto(
     int Id,
@@ -187,7 +189,9 @@ public record InstanciaDocumentoDetalleDto(
     // Solo documentos "Pago a Proveedor" (null en el resto).
     PagoProveedorDto? PagoProveedor = null,
     // true si aprobar el paso actual es confirmar el pago de un "Pago a Proveedor" (pide banco y fecha).
-    bool PasoActualConfirmaPagoProveedor = false);
+    bool PasoActualConfirmaPagoProveedor = false,
+    /// <summary>"Jimaco" o "Ferrealiados" (2026-11-13) — etiqueta en pantalla y marca del PDF.</summary>
+    string Empresa = "Jimaco");
 
 public record EjecutarAccionDto(
     TipoAccion Accion,
