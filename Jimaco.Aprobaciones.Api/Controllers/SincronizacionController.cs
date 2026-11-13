@@ -32,6 +32,9 @@ public class SincronizacionController(IInstanciaDocumentoService instanciaServic
     private static readonly HashSet<string> PermitidosOtrasEmpresas =
     [
         nameof(ListarPendientesWO), nameof(ConfirmarWO), nameof(ReportarConflictoWO),
+        // Búsqueda del CE que Contabilidad escribe al aprobar un paso de la OC: es parte del flujo de
+        // aprobación (no de Cuentas por pagar) y la cola ya viene filtrada por empresa.
+        nameof(ListarPendientesComprobanteEgreso), nameof(AdjuntarComprobanteEgreso), nameof(ReportarConflictoComprobanteEgreso),
         nameof(ListarPendientesRemision), nameof(MarcarRemisionada),
         nameof(ListarPendientesRefresco), nameof(RefrescarHojaAlistamiento), nameof(CrearHojaAlistamientoSinOc)
     ];
