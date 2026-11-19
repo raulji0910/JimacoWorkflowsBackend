@@ -151,7 +151,7 @@ public class InstanciaDocumentoService(
                         Accion = TipoAccion.Reenviado,
                         Fecha = ahoraReenvio
                     });
-                    if (primerPasoReenvio is null)
+                    if (primerPasoReenvio is null || flujoFresco.AprobacionAutomaticaAlLlegar)
                         AprobarAutomaticamente(existente, usuarioId, ahoraReenvio);
 
                     await db.SaveChangesAsync(ct);
@@ -221,7 +221,9 @@ public class InstanciaDocumentoService(
             Accion = TipoAccion.Creado,
             Fecha = ahora
         });
-        if (primerPaso is null)
+        // Flujo con aprobación automática Y pasos (2026-11-19, crédito de Ferrealiados → Logística):
+        // aprobado al llegar, pero sigue en proceso en su primer paso.
+        if (primerPaso is null || flujo.AprobacionAutomaticaAlLlegar)
             AprobarAutomaticamente(instancia, usuarioId, ahora);
 
         await db.SaveChangesAsync(ct);
@@ -230,6 +232,14 @@ public class InstanciaDocumentoService(
 
         return await ObtenerAsync(instancia.Id, ct);
     }
+
+    /// <summary>
+    /// El paso de Orden 1 es la aprobación comercial (la que se refleja en World Office y se le
+    /// avisa al solicitante) — salvo en un flujo con <see cref="DefinicionFlujo.AprobacionAutomaticaAlLlegar"/>,
+    /// donde esa aprobación ya la hizo el sistema al llegar y el paso 1 es otra cosa (ej. Logística).
+    /// </summary>
+    private static bool EsAprobacionComercial(InstanciaDocumento instancia, PasoFlujo paso) =>
+        paso.Orden == 1 && !instancia.DefinicionFlujo.AprobacionAutomaticaAlLlegar;
 
     /// <summary>
     /// Flujo sin pasos: aprobado al llegar. Si vino de World Office, además queda pendiente de
@@ -242,7 +252,7 @@ public class InstanciaDocumentoService(
             InstanciaDocumento = instancia,
             UsuarioId = usuarioId,
             Accion = TipoAccion.AprobadoAutomatico,
-            Comentario = "Flujo sin pasos de aprobación: queda aprobado al llegar.",
+            Comentario = "Aprobación automática al llegar (sin aprobación comercial).",
             Fecha = ahora
         });
         if (instancia.IdAsientoContableOrigen is not null && instancia.PrefijoOrigen is not null)
@@ -450,7 +460,7 @@ public class InstanciaDocumentoService(
                 // si el documento vino sincronizado desde World Office, queda pendiente de
                 // reflejar esa aprobación allá. No se revierte si un paso posterior rechaza o
                 // devuelve el documento — la aprobación de este primer paso ya fue real.
-                if (paso.Orden == 1 && instancia.IdAsientoContableOrigen is not null)
+                if (EsAprobacionComercial(instancia, paso) && instancia.IdAsientoContableOrigen is not null)
                     instancia.PendienteEscrituraWO = true;
 
                 break;
@@ -501,7 +511,7 @@ public class InstanciaDocumentoService(
                     // cuando el paso 1 devuelve DE VERDAD al emisor — un paso posterior que también
                     // elige "el emisor" hace lo mismo puertas adentro (Estado=Devuelto), pero WO ya
                     // reflejó la aprobación del paso 1 hace rato, no hay nada que reescribir ahí.
-                    if (paso.Orden == 1 && instancia.IdAsientoContableOrigen is not null)
+                    if (EsAprobacionComercial(instancia, paso) && instancia.IdAsientoContableOrigen is not null)
                         instancia.PendienteEscrituraWO = true;
                 }
                 else
@@ -520,7 +530,7 @@ public class InstanciaDocumentoService(
 
                 // A diferencia de Devolver (que ahora vuelve a pendiente en WO), Rechazar SÍ es
                 // terminal — mismo resultado que el botón nativo "Rechazar" de WO (senAprobado=2).
-                if (paso.Orden == 1 && instancia.IdAsientoContableOrigen is not null)
+                if (EsAprobacionComercial(instancia, paso) && instancia.IdAsientoContableOrigen is not null)
                     instancia.PendienteEscrituraWO = true;
                 break;
 
@@ -534,7 +544,7 @@ public class InstanciaDocumentoService(
                 // normal desde el paso destino (que a su vez avanza por Orden como cualquier otro).
                 instancia.PasoActualId = destinoContado;
 
-                if (paso.Orden == 1 && instancia.IdAsientoContableOrigen is not null)
+                if (EsAprobacionComercial(instancia, paso) && instancia.IdAsientoContableOrigen is not null)
                     instancia.PendienteEscrituraWO = true;
                 break;
 
@@ -569,7 +579,7 @@ public class InstanciaDocumentoService(
         // es OTRA persona — la que armó la OC, no necesariamente la misma) — solo tiene sentido
         // para el resultado del primer paso, y solo si de verdad salió del flujo hacia el emisor
         // (Devuelto con destino intermedio no cuenta, ver arriba).
-        if (paso.Orden == 1 && (dto.Accion == TipoAccion.Aprobado
+        if (EsAprobacionComercial(instancia, paso) && (dto.Accion == TipoAccion.Aprobado
                                  || instancia.Estado is EstadoInstanciaDocumento.Devuelto or EstadoInstanciaDocumento.Rechazado))
             await NotificarSinRomperAsync(() => NotificarSolicitanteAsync(instancia, dto.Accion, dto.Comentario, ct));
 
@@ -733,15 +743,20 @@ public class InstanciaDocumentoService(
 
         instancia.PasoActualId = primerPaso.Id;
         instancia.Estado = EstadoInstanciaDocumento.EnProceso;
+        // Por si la devolución todavía no alcanzó a escribirse en WO: ya no está devuelto.
+        instancia.PendienteEscrituraWO = false;
 
+        var ahora = timeProvider.GetUtcNow().UtcDateTime;
         db.HistorialAcciones.Add(new HistorialAccion
         {
             InstanciaDocumentoId = instancia.Id,
             PasoFlujoId = primerPaso.Id,
             UsuarioId = usuarioId,
             Accion = TipoAccion.Reenviado,
-            Fecha = timeProvider.GetUtcNow().UtcDateTime
+            Fecha = ahora
         });
+        if (instancia.DefinicionFlujo.AprobacionAutomaticaAlLlegar)
+            AprobarAutomaticamente(instancia, usuarioId, ahora);
 
         await db.SaveChangesAsync(ct);
         await NotificarSinRomperAsync(() => notificacionService.NotificarPasoAsync(instancia.Id, primerPaso.Id, ct));

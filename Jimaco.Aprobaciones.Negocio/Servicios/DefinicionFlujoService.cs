@@ -77,6 +77,7 @@ public class DefinicionFlujoService(AppDbContext db) : IDefinicionFlujoService
             ValorMinimo = dto.ValorMinimo,
             ValorMaximo = dto.ValorMaximo,
             FormaDePagoRequerida = dto.FormaDePagoRequerida,
+            AprobacionAutomaticaAlLlegar = dto.AprobacionAutomaticaAlLlegar,
             Pasos = dto.Pasos.Select(p => new PasoFlujo
             {
                 Nombre = p.Nombre,
@@ -193,5 +194,6 @@ public class DefinicionFlujoService(AppDbContext db) : IDefinicionFlujoService
             p.Id, p.Nombre, p.Orden, p.PermiteDevolver, p.PermiteRechazar, p.PermiteDevolverAlEmisor,
             p.DestinosDevolucion.Select(d => d.PasoFlujoDestinoId).ToList(), p.RequiereComprobanteEgresoAlAprobar,
             p.RequiereComentarioAlAprobar, p.PasoRedirigirAPagoContadoId, p.RequiereSoportePagoAlAprobar,
-            p.PasoFlujoRoles.Select(pr => pr.RolId).ToList())).ToList());
+            p.PasoFlujoRoles.Select(pr => pr.RolId).ToList())).ToList(),
+        f.AprobacionAutomaticaAlLlegar);
 }

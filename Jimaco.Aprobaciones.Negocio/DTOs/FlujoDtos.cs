@@ -48,7 +48,9 @@ public record DefinicionFlujoDto(
     decimal? ValorMinimo,
     decimal? ValorMaximo,
     string? FormaDePagoRequerida,
-    IReadOnlyList<PasoFlujoDto> Pasos);
+    IReadOnlyList<PasoFlujoDto> Pasos,
+    // Ver DefinicionFlujo.AprobacionAutomaticaAlLlegar.
+    bool AprobacionAutomaticaAlLlegar = false);
 
 public record CrearDefinicionFlujoDto(
     string Nombre,
@@ -56,4 +58,5 @@ public record CrearDefinicionFlujoDto(
     decimal? ValorMinimo,
     decimal? ValorMaximo,
     string? FormaDePagoRequerida,
-    IReadOnlyList<PasoFlujoInputDto> Pasos);
+    IReadOnlyList<PasoFlujoInputDto> Pasos,
+    bool AprobacionAutomaticaAlLlegar = false);

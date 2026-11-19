@@ -37,6 +37,16 @@ public class DefinicionFlujo
     [MaxLength(50)]
     public string? FormaDePagoRequerida { get; set; }
 
+    /// <summary>
+    /// El documento queda aprobado (comercialmente) al llegar, sin que nadie lo apruebe — igual
+    /// que un flujo sin pasos — pero en vez de completarse sigue a sus pasos (2026-11-19, OC a
+    /// crédito de Ferrealiados: "aprobadas solas, pero que pasen a Logística y la Asistente de
+    /// Gerencia las pueda devolver"). Con esto, el paso de Orden 1 NO es la aprobación comercial:
+    /// aprobarlo no escribe en WO ni le avisa al solicitante (eso ya lo hizo la aprobación
+    /// automática). Un flujo sin pasos se aprueba solo siempre, tenga o no esta marca.
+    /// </summary>
+    public bool AprobacionAutomaticaAlLlegar { get; set; }
+
     public ICollection<PasoFlujo> Pasos { get; set; } = [];
 }
 
