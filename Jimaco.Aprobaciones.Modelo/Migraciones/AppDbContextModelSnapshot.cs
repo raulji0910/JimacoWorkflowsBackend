@@ -405,6 +405,9 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Property<bool>("Activo")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("AprobacionAutomaticaAlLlegar")
+                        .HasColumnType("bit");
+
                     b.Property<string>("FormaDePagoRequerida")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
