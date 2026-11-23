@@ -18,6 +18,12 @@ public interface IPagosService
 
     Task<PaginaDto<LotePagoDto>> ListarLotesAsync(FiltroPagosDto filtro, int usuarioId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Manda (o reenvía) el reporte de un lote YA TERMINADO a Contabilidad — 2026-11-23, para lotes
+    /// pagados antes de que existiera el reporte o si el correo no llegó. Devuelve a cuántos usuarios.
+    /// </summary>
+    Task<int> EnviarReporteContabilidadAsync(int lotePagoId, int usuarioId, CancellationToken ct = default);
+
     /// <param name="soporteId">null = el primero del lote.</param>
     Task<(Stream Contenido, string NombreArchivo)> DescargarSoporteLoteAsync(int lotePagoId, int? soporteId, int usuarioId, CancellationToken ct = default);
 }

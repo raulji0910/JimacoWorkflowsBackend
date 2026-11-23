@@ -1062,20 +1062,20 @@ public class InstanciaDocumentoService(
     /// trae la copia del CE). Si los archivos pesan demasiado para un correo, van solo los PDF de las
     /// órdenes y se avisa que los soportes se descargan desde el sistema.
     /// </summary>
-    private async Task EnviarReporteLoteAContabilidadAsync(int lotePagoId, CancellationToken ct)
+    public async Task<int> EnviarReporteLoteAContabilidadAsync(int lotePagoId, CancellationToken ct = default)
     {
         var contables = await db.UsuarioRoles
             .Where(ur => ur.Rol.Activo && ur.Rol.PuedeConsultarPagos && ur.Usuario.Activo)
             .Select(ur => ur.UsuarioId)
             .Distinct()
             .ToListAsync(ct);
-        if (contables.Count == 0) return;
+        if (contables.Count == 0) return 0;
 
         var lote = await db.LotesPago.AsNoTracking()
             .Include(l => l.Soportes)
             .Include(l => l.Pagos)
             .FirstOrDefaultAsync(l => l.Id == lotePagoId, ct);
-        if (lote is null || lote.Pagos.Count == 0) return;
+        if (lote is null || lote.Pagos.Count == 0) return 0;
 
         var ids = lote.Pagos.Select(p => p.InstanciaDocumentoId).ToList();
         var ordenes = (await PagosService.ConsultarOrdenes(db).Where(i => ids.Contains(i.Id)).ToListAsync(ct))
@@ -1174,6 +1174,7 @@ public class InstanciaDocumentoService(
         foreach (var usuarioId in contables)
             await NotificarSinRomperAsync(() => notificacionService.NotificarHtmlConAdjuntosAsync(
                 lote.Pagos.First().InstanciaDocumentoId, usuarioId, asunto, cuerpo, "/pagos", adjuntos, ct));
+        return contables.Count;
     }
 
     /// <summary>Quita lo que Windows/los correos no aceptan en un nombre de archivo y lo acorta.</summary>

@@ -67,6 +67,12 @@ public class PagosController(IPagosService pagosService) : ControllerBase
     public async Task<ActionResult<PaginaDto<LotePagoDto>>> Lotes([FromQuery] FiltroPagosDto filtro, CancellationToken ct) =>
         Ok(await pagosService.ListarLotesAsync(filtro, UsuarioActualId, ct));
 
+    /// <summary>Manda (o reenvía) el reporte de un lote terminado a Contabilidad. Devuelve a cuántos usuarios.</summary>
+    [HttpPost("lotes/{id:int}/reporte-contabilidad")]
+    public async Task<ActionResult<object>> EnviarReporteContabilidad(int id) =>
+        // Sin el "ct" de la petición: armar los PDF y mandar el correo puede tardar; que no se corte a mitad.
+        Ok(new { enviados = await pagosService.EnviarReporteContabilidadAsync(id, UsuarioActualId, CancellationToken.None) });
+
     /// <summary>El primer soporte del lote (lotes viejos y web anterior).</summary>
     [HttpGet("lotes/{id:int}/soporte")]
     public async Task<IActionResult> Soporte(int id, CancellationToken ct)

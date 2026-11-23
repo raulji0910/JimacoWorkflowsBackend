@@ -471,4 +471,36 @@ public class RelacionYLotePagosTests
 
         Assert.Equal([101, 103], (await db.PartidasCuentaPorPagar.Select(p => p.IdDocumentoDetalleWO).ToListAsync()).Order().Cast<int>());
     }
+
+    [Fact]
+    public async Task ReporteAContabilidad_SePuedeReenviarAPedido_SoloSiElLoteTermino()
+    {
+        await SembrarAsync();
+        var contableId = await ContableAsync();
+        await RatificarDosProveedoresAsync();
+        var ids = (await Pagos().ListarPendientesAsync(pagadorId)).Select(o => o.InstanciaDocumentoId).OrderBy(i => i).ToList();
+        almacenamiento.Setup(a => a.AbrirAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new MemoryStream([1, 2, 3]));
+        var lote = await Pagos().PagarLoteAsync(ids, 13650, Hoy, Pdfs("pago.pdf"), pagadorId);
+
+        // Con CE pendientes, no.
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Pagos().EnviarReporteContabilidadAsync(lote.Id, contableId));
+
+        var numero = 15600;
+        foreach (var id in ids)
+        {
+            numero++;
+            await CuentasPorPagar().ConfirmarCECreadoAsync(id, new CECreadoDto("CEJ", numero, 9000 + numero));
+            await Instancias().AdjuntarComprobanteEgresoAsync(id, new ComprobanteEgresoEncontradoDto(
+                $"CEJ {numero}", Hoy, 1, null, null, null, null, null, null, null, []));
+        }
+        Assert.Single(ReportesAContabilidad()); // el automático
+
+        // A pedido (lo puede pedir el contable o el pagador), las veces que haga falta.
+        Assert.Equal(1, await Pagos().EnviarReporteContabilidadAsync(lote.Id, contableId));
+        Assert.Equal(1, await Pagos().EnviarReporteContabilidadAsync(lote.Id, pagadorId));
+        Assert.Equal(3, ReportesAContabilidad().Count);
+        // Gerencia Comercial no.
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => Pagos().EnviarReporteContabilidadAsync(lote.Id, comercialId));
+    }
 }

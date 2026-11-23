@@ -332,6 +332,26 @@ public class PagosService(AppDbContext db, IInstanciaDocumentoService instanciaS
             .ToList();
     }
 
+    public async Task<int> EnviarReporteContabilidadAsync(int lotePagoId, int usuarioId, CancellationToken ct = default)
+    {
+        await ExigirConsultaAsync(usuarioId, ct);
+
+        var lote = await db.LotesPago.AsNoTracking()
+            .Include(l => l.Pagos).ThenInclude(p => p.InstanciaDocumento).ThenInclude(i => i.ComprobanteEgreso)
+            .FirstOrDefaultAsync(l => l.Id == lotePagoId, ct)
+            ?? throw new KeyNotFoundException("Lote no encontrado.");
+
+        // Igual que el aviso automático: solo cuando cada orden ya tiene su CE (o quedó con conflicto).
+        var faltan = lote.Pagos.Count(p => p.InstanciaDocumento.ComprobanteEgreso is null && p.ConflictoCreacionCE is null);
+        if (faltan > 0)
+            throw new InvalidOperationException($"El lote {lote.Numero} todavía tiene {faltan} comprobante(s) de egreso por crear en World Office. El reporte sale solo cuando termine.");
+
+        var enviados = await instanciaService.EnviarReporteLoteAContabilidadAsync(lotePagoId, ct);
+        if (enviados == 0)
+            throw new InvalidOperationException("Nadie tiene el permiso \"Consulta de pagos (Contabilidad)\": asignalo a un rol del contable en Roles.");
+        return enviados;
+    }
+
     /// <summary>Los soportes del lote; un lote viejo (solo columnas antiguas) muestra el suyo con Id 0.</summary>
     internal static List<SoporteLotePagoDto> SoportesDe(LotePago l) =>
         l.Soportes.Count > 0
