@@ -17,4 +17,6 @@ public record LoginResponseDto(string Token, string Nombre, string Email, IReadO
     bool PuedePagarCuentas = false,
     // Dashboard "Alistamiento Ferrealiados" (2026-11-13) — ver Rol.PuedeGestionarAlistamientoFerrealiados.
     bool PuedeGestionarAlistamientoFerrealiados = false,
-    bool PuedeVerAlistamientoFerrealiados = false);
+    bool PuedeVerAlistamientoFerrealiados = false,
+    // Consulta de pagos (contable, solo lectura) — ver Rol.PuedeConsultarPagos.
+    bool PuedeConsultarPagos = false);

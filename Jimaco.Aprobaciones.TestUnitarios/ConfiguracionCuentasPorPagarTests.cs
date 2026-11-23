@@ -79,4 +79,30 @@ public class ConfiguracionCuentasPorPagarTests
         Assert.Equal("CEJ-2", config.PrefijoCE);
         Assert.False(config.CrearCEEnWorldOffice);
     }
+
+    [Fact]
+    public async Task Cuentas_incluidas_arrancan_con_las_de_siempre_y_se_normalizan_al_guardar()
+    {
+        var adminId = await AdminAsync();
+        Assert.Equal("2205,2210,2335", (await Servicio().ObtenerAsync()).CuentasIncluidas);
+
+        var config = await Servicio().ActualizarAsync(new ActualizarConfiguracionCuentasPorPagarDto("CEJ", true, " 2205 ; 2210,2205 "), adminId);
+
+        Assert.Equal("2205,2210", config.CuentasIncluidas);
+        // Sin mandar cuentas (web anterior) no se tocan.
+        Assert.Equal("2205,2210", (await Servicio().ActualizarAsync(new ActualizarConfiguracionCuentasPorPagarDto("CEJ", true), adminId)).CuentasIncluidas);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("abc")]
+    [InlineData("1105")]
+    [InlineData("2205,13300")]
+    public async Task Cuentas_incluidas_invalidas_se_rechazan(string cuentas)
+    {
+        var adminId = await AdminAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            Servicio().ActualizarAsync(new ActualizarConfiguracionCuentasPorPagarDto("CEJ", true, cuentas), adminId));
+        Assert.Equal("2205,2210,2335", (await Servicio().ObtenerAsync()).CuentasIncluidas);
+    }
 }

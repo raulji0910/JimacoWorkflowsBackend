@@ -42,6 +42,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<BorradorPagoProveedor> BorradoresPagoProveedor => Set<BorradorPagoProveedor>();
     public DbSet<RelacionPago> RelacionesPago => Set<RelacionPago>();
     public DbSet<LotePago> LotesPago => Set<LotePago>();
+    public DbSet<SoporteLotePago> SoportesLotePago => Set<SoporteLotePago>();
     public DbSet<TipoGiro> TiposGiro => Set<TipoGiro>();
     public DbSet<ConfiguracionCuentasPorPagar> ConfiguracionesCuentasPorPagar => Set<ConfiguracionCuentasPorPagar>();
     public DbSet<TerceroWO> TercerosWO => Set<TerceroWO>();
@@ -305,6 +306,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(l => l.Fecha).HasConversion(ConversorFechaUtc);
             e.Property(l => l.Total).HasPrecision(18, 2);
             e.HasIndex(l => l.Numero).IsUnique();
+            e.HasMany(l => l.Soportes).WithOne(s => s.LotePago).HasForeignKey(s => s.LotePagoId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<TipoGiro>(e =>

@@ -72,6 +72,14 @@ public class Rol
     /// </summary>
     public bool PuedePagarCuentas { get; set; }
 
+    /// <summary>
+    /// "Consulta de pagos" (2026-11-23, pedido para el contable): ve en el menú "Pagos" los lotes
+    /// pagados con sus CE, soportes y rechazados, y el Seguimiento de pagos — SOLO lectura: no paga ni
+    /// rechaza. Además recibe por correo el reporte de cada lote pagado (terceros, facturas, CE
+    /// generados y los soportes adjuntos).
+    /// </summary>
+    public bool PuedeConsultarPagos { get; set; }
+
     public ICollection<UsuarioRol> UsuarioRoles { get; set; } = [];
     public ICollection<PasoFlujoRol> PasoFlujoRoles { get; set; } = [];
 }

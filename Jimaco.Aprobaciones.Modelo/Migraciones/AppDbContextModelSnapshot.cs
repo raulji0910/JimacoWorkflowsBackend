@@ -315,6 +315,11 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Property<bool>("CrearCEEnWorldOffice")
                         .HasColumnType("bit");
 
+                    b.Property<string>("CuentasIncluidas")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
                     b.Property<DateTime?>("FechaActualizacion")
                         .HasColumnType("datetime2");
 
@@ -334,6 +339,7 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                         {
                             Id = 1,
                             CrearCEEnWorldOffice = false,
+                            CuentasIncluidas = "2205,2210,2335",
                             PrefijoCE = "CEJ-2"
                         });
                 });
@@ -1305,6 +1311,9 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<bool>("PuedeConsultarPagos")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("PuedeDevolverCualquierDocumento")
                         .HasColumnType("bit");
 
@@ -1340,6 +1349,7 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                             Activo = true,
                             Descripcion = "Administra usuarios, roles, tipos de documento y flujos.",
                             Nombre = "Admin",
+                            PuedeConsultarPagos = false,
                             PuedeDevolverCualquierDocumento = false,
                             PuedeGestionarAlistamiento = false,
                             PuedeGestionarAlistamientoFerrealiados = false,
@@ -1373,6 +1383,44 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.HasKey("Id");
 
                     b.ToTable("SincronizacionesCuentasPorPagar");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.SoporteLotePago", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ContentType")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("LotePagoId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("NombreArchivo")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<int>("Orden")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RutaArchivo")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<long>("TamanoBytes")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LotePagoId");
+
+                    b.ToTable("SoportesLotePago");
                 });
 
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.TerceroWO", b =>
@@ -2619,6 +2667,17 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Navigation("InstanciaDocumento");
                 });
 
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.SoporteLotePago", b =>
+                {
+                    b.HasOne("Jimaco.Aprobaciones.Modelo.Entidades.LotePago", "LotePago")
+                        .WithMany("Soportes")
+                        .HasForeignKey("LotePagoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("LotePago");
+                });
+
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.UsuarioRol", b =>
                 {
                     b.HasOne("Jimaco.Aprobaciones.Modelo.Entidades.Rol", "Rol")
@@ -2675,6 +2734,8 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.LotePago", b =>
                 {
                     b.Navigation("Pagos");
+
+                    b.Navigation("Soportes");
                 });
 
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.PasoFlujo", b =>

@@ -293,6 +293,36 @@ public class LotePago
     public bool AvisoTerminadoEnviado { get; set; }
 
     public ICollection<PagoProveedor> Pagos { get; set; } = [];
+
+    /// <summary>
+    /// Los PDF de soporte del lote (2026-11-23: puede ser más de uno). NombreArchivoSoporte /
+    /// RutaArchivoSoporte de arriba quedan con el PRIMERO, por compatibilidad con lotes viejos y con
+    /// la imagen anterior de la Api (rollback sin perder el soporte).
+    /// </summary>
+    public ICollection<SoporteLotePago> Soportes { get; set; } = [];
+}
+
+/// <summary>Un PDF de soporte de un lote de pago (2026-11-23).</summary>
+public class SoporteLotePago
+{
+    public int Id { get; set; }
+
+    public int LotePagoId { get; set; }
+    public LotePago LotePago { get; set; } = null!;
+
+    [MaxLength(255)]
+    public required string NombreArchivo { get; set; }
+
+    [MaxLength(500)]
+    public required string RutaArchivo { get; set; }
+
+    [MaxLength(100)]
+    public string? ContentType { get; set; }
+
+    public long TamanoBytes { get; set; }
+
+    /// <summary>Orden en que se adjuntaron (el primero es el "principal").</summary>
+    public int Orden { get; set; }
 }
 
 /// <summary>Tipo de giro de un pago extraordinario → cuenta de WO que se debita (lista desplegable).</summary>

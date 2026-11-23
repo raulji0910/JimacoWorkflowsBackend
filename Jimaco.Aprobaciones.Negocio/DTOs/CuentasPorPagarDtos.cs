@@ -290,11 +290,25 @@ public record LoteOrdenDto(int InstanciaDocumentoId, string? NumeroReferencia, s
     string? PrefijoCE, decimal? NumeroCE, bool PendienteCreacionCE, string? ConflictoCreacionCE);
 
 public record LotePagoDto(int Id, int Numero, DateTime Fecha, DateTime FechaPago, string? NombreBanco, decimal Total, string? PagadoPor,
-    bool TieneSoporte, IReadOnlyList<LoteOrdenDto> Ordenes);
+    bool TieneSoporte, IReadOnlyList<LoteOrdenDto> Ordenes, IReadOnlyList<SoporteLotePagoDto>? Soportes = null);
+
+/// <summary>Un PDF de soporte de un lote (2026-11-23: puede haber varios).</summary>
+public record SoporteLotePagoDto(int Id, string NombreArchivo, long TamanoBytes);
+
+/// <summary>Un PDF recibido para el soporte del lote (lo arma el controller desde el formulario).</summary>
+public record ArchivoSoporteInput(string NombreArchivo, string? ContentType, long TamanoBytes, Stream Contenido);
 
 // ---- Configuración de Cuentas por Pagar que maneja el administrador (2026-11-11) ----
 
 /// <summary>Lo que ve el administrador y lo que pide el Sincronizador antes de crear CE en WO.</summary>
-public record ConfiguracionCuentasPorPagarDto(string PrefijoCE, bool CrearCEEnWorldOffice, DateTime? FechaActualizacion, string? ActualizadoPor);
+/// <param name="CuentasIncluidas">Cuentas de WO (prefijos del código) que entran a Cuentas por Pagar, separadas por coma — 2026-11-23.</param>
+public record ConfiguracionCuentasPorPagarDto(string PrefijoCE, bool CrearCEEnWorldOffice, DateTime? FechaActualizacion, string? ActualizadoPor,
+    string CuentasIncluidas = ConfiguracionCuentasPorPagarDtoDefaults.Cuentas);
 
-public record ActualizarConfiguracionCuentasPorPagarDto(string PrefijoCE, bool CrearCEEnWorldOffice);
+/// <param name="CuentasIncluidas">null = no se cambian.</param>
+public record ActualizarConfiguracionCuentasPorPagarDto(string PrefijoCE, bool CrearCEEnWorldOffice, string? CuentasIncluidas = null);
+
+internal static class ConfiguracionCuentasPorPagarDtoDefaults
+{
+    public const string Cuentas = Modelo.Entidades.ConfiguracionCuentasPorPagar.CuentasIncluidasPorDefecto;
+}

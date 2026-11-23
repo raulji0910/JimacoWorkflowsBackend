@@ -27,8 +27,18 @@ public class CuentasPorPagarService(AppDbContext db, IInstanciaDocumentoService 
         db.PartidasCuentaPorPagar.RemoveRange(await db.PartidasCuentaPorPagar.ToListAsync(ct));
         db.AnticiposProveedor.RemoveRange(await db.AnticiposProveedor.ToListAsync(ct));
 
+        // Solo las cuentas que el administrador dejó en Config. de pagos (2026-11-23): un Sincronizador
+        // viejo sigue mandando sus cuentas fijas, y lo que sobre se descarta acá.
+        var cuentasIncluidas = ConfiguracionCuentasPorPagar.SepararCuentas(
+            await db.ConfiguracionesCuentasPorPagar.Where(c => c.Id == ConfiguracionCuentasPorPagar.IdUnico)
+                .Select(c => c.CuentasIncluidas).FirstOrDefaultAsync(ct)
+            ?? ConfiguracionCuentasPorPagar.CuentasIncluidasPorDefecto);
+        if (cuentasIncluidas.Count == 0)
+            cuentasIncluidas = ConfiguracionCuentasPorPagar.SepararCuentas(ConfiguracionCuentasPorPagar.CuentasIncluidasPorDefecto);
+
         var partidas = foto.Partidas
             .Where(p => p.SaldoWO != 0 && !string.IsNullOrWhiteSpace(p.Identificacion))
+            .Where(p => p.CodigoCuenta is not { } cuenta || cuentasIncluidas.Any(c => cuenta.Trim().StartsWith(c, StringComparison.Ordinal)))
             .Select(p => new PartidaCuentaPorPagar
             {
                 IdDocumentoDetalleWO = p.IdDocumentoDetalleWO,
@@ -558,16 +568,16 @@ public class CuentasPorPagarService(AppDbContext db, IInstanciaDocumentoService 
         var creador = await db.Usuarios.Where(u => u.Id == usuarioId).Select(u => u.Nombre).FirstOrDefaultAsync(ct);
         var filas = string.Concat(proveedores.Select(p =>
             $"<tr><td>{Html(p.Nombre)}</td><td style=\"text-align:center\">{p.Facturas.Count}</td>" +
-            $"<td style=\"text-align:right\">{p.TotalFacturas:N0}</td><td style=\"text-align:right\">{(p.TotalAnticipos > 0 ? "-" + p.TotalAnticipos.ToString("N0") : "")}</td>" +
-            $"<td style=\"text-align:right\"><b>{p.Neto:N0}</b></td></tr>"));
+            $"<td style=\"text-align:right\">{FormatoPesos.Miles(p.TotalFacturas)}</td><td style=\"text-align:right\">{(p.TotalAnticipos > 0 ? "-" + FormatoPesos.Miles(p.TotalAnticipos) : "")}</td>" +
+            $"<td style=\"text-align:right\"><b>{FormatoPesos.Miles(p.Neto)}</b></td></tr>"));
         var cuerpo = $"<p>{Html(creador ?? "Gerencia Comercial")} envió la <b>relación de pagos {relacion.Numero}</b>: " +
-                     $"{proveedores.Count} proveedor(es), {proveedores.Sum(p => p.Facturas.Count)} factura(s), por <b>${total:N0}</b>.</p>" +
+                     $"{proveedores.Count} proveedor(es), {proveedores.Sum(p => p.Facturas.Count)} factura(s), por <b>${FormatoPesos.Miles(total)}</b>.</p>" +
                      (relacion.Observaciones is null ? "" : $"<p><i>{Html(relacion.Observaciones)}</i></p>") +
                      "<table border=\"1\" cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse:collapse\">" +
                      "<tr><th>Proveedor</th><th>Facturas</th><th>Valor facturas</th><th>Anticipos</th><th>A pagar</th></tr>" +
-                     $"{filas}<tr><td colspan=\"4\"><b>Total</b></td><td style=\"text-align:right\"><b>{total:N0}</b></td></tr></table>" +
+                     $"{filas}<tr><td colspan=\"4\"><b>Total</b></td><td style=\"text-align:right\"><b>{FormatoPesos.Miles(total)}</b></td></tr></table>" +
                      "<p>Desde el menú <b>Pagos</b> elegís qué pagar (como un lote, con un solo soporte) y qué rechazar.</p>";
-        await AvisarPagadoresAsync(ordenes[0].Id, $"[Jimaco Aprobaciones] Relación de pagos {relacion.Numero} por ${total:N0}", cuerpo, ct);
+        await AvisarPagadoresAsync(ordenes[0].Id, $"[Jimaco Aprobaciones] Relación de pagos {relacion.Numero} para pagar", cuerpo, ct);
 
         return new RelacionCreadaDto(relacion.Numero, ordenes.Count, total);
     }
@@ -711,11 +721,11 @@ public class CuentasPorPagarService(AppDbContext db, IInstanciaDocumentoService 
         var cuerpo = $"<p>{Html(creador ?? "Gerencia Comercial")} pidió un <b>pago extraordinario</b>:</p>" +
                      "<table border=\"1\" cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse:collapse\">" +
                      $"<tr><th style=\"text-align:left\">Tercero</th><td>{Html(tercero.Nombre)} ({Html(tercero.Identificacion)})</td></tr>" +
-                     $"<tr><th style=\"text-align:left\">Valor</th><td><b>${dto.Valor:N0}</b></td></tr>" +
+                     $"<tr><th style=\"text-align:left\">Valor</th><td><b>${FormatoPesos.Miles(dto.Valor)}</b></td></tr>" +
                      $"<tr><th style=\"text-align:left\">Tipo de giro</th><td>{Html(tipoGiro.Nombre)}{(tipoGiro.Grupo is null ? "" : $" <small>({Html(tipoGiro.Grupo)})</small>")}</td></tr>" +
                      $"<tr><th style=\"text-align:left\">Concepto</th><td>{Html(concepto)}</td></tr></table>" +
                      "<p>Lo encontrás en el menú <b>Pagos</b>.</p>";
-        await AvisarPagadoresAsync(creado.Id, $"[Jimaco Aprobaciones] Pago extraordinario a {tercero.Nombre} por ${dto.Valor:N0}", cuerpo, ct);
+        await AvisarPagadoresAsync(creado.Id, $"[Jimaco Aprobaciones] Pago extraordinario a {tercero.Nombre} por ${FormatoPesos.Miles(dto.Valor)}", cuerpo, ct);
 
         return creado.Id;
     }
@@ -781,7 +791,7 @@ public class CuentasPorPagarService(AppDbContext db, IInstanciaDocumentoService 
 
     public async Task<SeguimientoPaginaDto> ObtenerSeguimientoAsync(FiltroPagosDto filtro, int usuarioId, CancellationToken ct = default)
     {
-        await ExigirPermisoAsync(usuarioId, ct);
+        await ExigirSeguimientoAsync(usuarioId, ct);
 
         var tamano = ConsultaSeguimientoPagos.TamanoPagina(filtro.TamanoPagina, 10);
         var pagina = Math.Max(1, filtro.Pagina);
@@ -829,7 +839,7 @@ public class CuentasPorPagarService(AppDbContext db, IInstanciaDocumentoService 
 
     public async Task<IReadOnlyList<LineaOrdenPagoDto>> ObtenerLineasSeguimientoAsync(int instanciaDocumentoId, int usuarioId, CancellationToken ct = default)
     {
-        await ExigirPermisoAsync(usuarioId, ct);
+        await ExigirSeguimientoAsync(usuarioId, ct);
         return await ConsultaSeguimientoPagos.LineasAsync(db, instanciaDocumentoId, ct);
     }
 
@@ -976,6 +986,17 @@ public class CuentasPorPagarService(AppDbContext db, IInstanciaDocumentoService 
 
     private async Task<DateTime?> ObtenerFechaCorteAsync(CancellationToken ct) =>
         await db.SincronizacionesCuentasPorPagar.Select(s => (DateTime?)s.FechaCorte).FirstOrDefaultAsync(ct);
+
+    /// <summary>Seguimiento de pagos (solo lectura): quien ordena pagos o quien consulta pagos (contable, 2026-11-23).</summary>
+    private async Task ExigirSeguimientoAsync(int usuarioId, CancellationToken ct)
+    {
+        var tienePermiso = await db.UsuarioRoles
+            .Where(ur => ur.UsuarioId == usuarioId)
+            .AnyAsync(ur => ur.Rol.Activo && (ur.Rol.PuedeVerCuentasPorPagar || ur.Rol.PuedeConsultarPagos), ct);
+
+        if (!tienePermiso)
+            throw new UnauthorizedAccessException("No tenés permiso para ver el seguimiento de pagos.");
+    }
 
     private async Task ExigirPermisoAsync(int usuarioId, CancellationToken ct)
     {

@@ -606,8 +606,12 @@ else
 {
     try
     {
-        var prefijosCuenta = (config["CuentasPorPagar:PrefijosCuenta"] ?? "2205,2210,2335")
-            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        // Las cuentas las maneja el administrador en Config. de pagos (2026-11-23); el appsettings
+        // (o el valor fijo) queda solo de respaldo si la Api no responde o es una versión vieja.
+        var cuentasConfiguradas = (await ObtenerConfiguracionCEAsync())?.CuentasIncluidas;
+        var prefijosCuenta = Jimaco.Aprobaciones.Modelo.Entidades.ConfiguracionCuentasPorPagar.SepararCuentas(
+            !string.IsNullOrWhiteSpace(cuentasConfiguradas) ? cuentasConfiguradas
+            : config["CuentasPorPagar:PrefijosCuenta"] ?? Jimaco.Aprobaciones.Modelo.Entidades.ConfiguracionCuentasPorPagar.CuentasIncluidasPorDefecto).ToArray();
         var cuentaAnticipos = config["CuentasPorPagar:CuentaAnticipos"] ?? "133005";
 
         var prefijosBanco = (config["CuentasPorPagar:CuentasBanco"] ?? "1105,1110")

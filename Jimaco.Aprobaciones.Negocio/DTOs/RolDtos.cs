@@ -12,7 +12,9 @@ public record RolDto(
     bool PuedePagarCuentas = false,
     // Alistamiento de FERREALIADOS (2026-11-13) — dashboard aparte, permisos aparte.
     bool PuedeGestionarAlistamientoFerrealiados = false,
-    bool PuedeVerAlistamientoFerrealiados = false);
+    bool PuedeVerAlistamientoFerrealiados = false,
+    // Consulta de pagos, solo lectura + reporte por correo de cada lote (2026-11-23) — ver Rol.PuedeConsultarPagos.
+    bool PuedeConsultarPagos = false);
 
 public record CrearRolDto(
     string Nombre,
@@ -24,7 +26,9 @@ public record CrearRolDto(
     bool PuedePagarCuentas = false,
     // Alistamiento de FERREALIADOS (2026-11-13) — dashboard aparte, permisos aparte.
     bool PuedeGestionarAlistamientoFerrealiados = false,
-    bool PuedeVerAlistamientoFerrealiados = false);
+    bool PuedeVerAlistamientoFerrealiados = false,
+    // Consulta de pagos, solo lectura + reporte por correo de cada lote (2026-11-23) — ver Rol.PuedeConsultarPagos.
+    bool PuedeConsultarPagos = false);
 
 public record ActualizarRolDto(
     string Nombre,
@@ -37,4 +41,6 @@ public record ActualizarRolDto(
     bool PuedePagarCuentas = false,
     // Alistamiento de FERREALIADOS (2026-11-13) — dashboard aparte, permisos aparte.
     bool PuedeGestionarAlistamientoFerrealiados = false,
-    bool PuedeVerAlistamientoFerrealiados = false);
+    bool PuedeVerAlistamientoFerrealiados = false,
+    // Consulta de pagos, solo lectura + reporte por correo de cada lote (2026-11-23) — ver Rol.PuedeConsultarPagos.
+    bool PuedeConsultarPagos = false);

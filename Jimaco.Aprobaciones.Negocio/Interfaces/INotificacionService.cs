@@ -13,6 +13,13 @@ public interface INotificacionService
     Task NotificarHtmlAsync(int? instanciaDocumentoId, int usuarioId, string asunto, string cuerpoHtml, string? rutaFrontend, CancellationToken ct = default);
 
     /// <summary>
+    /// Igual que <see cref="NotificarHtmlAsync"/> pero con archivos pegados al correo (2026-11-23:
+    /// reporte de lote pagado a Contabilidad, con los soportes y el PDF de cada orden con su CE).
+    /// </summary>
+    Task NotificarHtmlConAdjuntosAsync(int? instanciaDocumentoId, int usuarioId, string asunto, string cuerpoHtml, string? rutaFrontend,
+        IReadOnlyList<AdjuntoCorreo> adjuntos, CancellationToken ct = default);
+
+    /// <summary>
     /// Avisa a quien tiene el documento ACTUAL (ej. Gerencia General) que el Sincronizador no pudo
     /// encontrar el Comprobante de Egreso que Contabilidad escribió — para que decida si lo devuelve
     /// a Contabilidad a corregir, en vez de quedar esperando en silencio un aviso que nunca va a

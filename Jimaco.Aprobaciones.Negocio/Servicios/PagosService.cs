@@ -43,7 +43,7 @@ public class PagosService(AppDbContext db, IInstanciaDocumentoService instanciaS
     }
 
     public async Task<LotePagoDto> PagarLoteAsync(IReadOnlyList<int> instanciasIds, int? idCuentaBancoWO, DateTime? fechaPago,
-        string? nombreArchivo, string? contentType, long tamanoBytes, Stream? soporte, int usuarioId, CancellationToken ct = default)
+        IReadOnlyList<ArchivoSoporteInput> soportes, int usuarioId, CancellationToken ct = default)
     {
         await ExigirPermisoAsync(usuarioId, ct);
 
@@ -85,17 +85,25 @@ public class PagosService(AppDbContext db, IInstanciaDocumentoService instanciaS
                 throw new InvalidOperationException("Elegí el banco desde donde se hizo el pago.");
             banco = await db.CuentasBancoWO.AsNoTracking().FirstOrDefaultAsync(b => b.IdCuentaContableWO == idBanco, ct)
                 ?? throw new InvalidOperationException("Ese banco no está en la lista de cuentas de World Office.");
-
-            if (soporte is null || string.IsNullOrWhiteSpace(nombreArchivo))
-                throw new InvalidOperationException("Adjuntá el soporte del pago (PDF).");
-            if (contentType != "application/pdf" && !nombreArchivo.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("El soporte del pago tiene que ser un PDF.");
         }
+
+        // Uno o varios PDF (2026-11-23); si sale plata, mínimo uno. Un lote que solo cruza anticipos
+        // (neto 0) no tiene transferencia que soportar: ahí es opcional.
+        var archivos = (soportes ?? []).Where(a => a.Contenido is not null && !string.IsNullOrWhiteSpace(a.NombreArchivo)).ToList();
+        if (total > 0 && archivos.Count == 0)
+            throw new InvalidOperationException("Adjuntá al menos un soporte del pago (PDF).");
+        if (archivos.Count > MaximoSoportes)
+            throw new InvalidOperationException($"Son demasiados archivos: máximo {MaximoSoportes} PDF por lote.");
+        foreach (var a in archivos)
+            if (a.ContentType != "application/pdf" && !a.NombreArchivo.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"El soporte \"{a.NombreArchivo}\" no es un PDF: todos los soportes tienen que ser PDF.");
 
         await using var tx = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null;
 
-        // El PDF se guarda UNA vez; cada orden lo referencia con su propio Adjunto (misma ruta).
-        var ruta = total > 0 ? await almacenamiento.GuardarAsync(nombreArchivo!, soporte!, ct) : null;
+        // Cada PDF se guarda UNA vez; cada orden los referencia con sus propios Adjuntos (misma ruta).
+        var guardados = new List<(ArchivoSoporteInput Archivo, string Ruta)>();
+        foreach (var a in archivos)
+            guardados.Add((a, await almacenamiento.GuardarAsync(a.NombreArchivo, a.Contenido, ct)));
         var ahora = timeProvider.GetUtcNow().UtcDateTime;
 
         var lote = new LotePago
@@ -107,9 +115,19 @@ public class PagosService(AppDbContext db, IInstanciaDocumentoService instanciaS
             IdCuentaBancoWO = banco?.IdCuentaContableWO,
             NombreBanco = banco is null ? null : $"{banco.Codigo} {banco.Nombre}",
             Total = total,
-            NombreArchivoSoporte = ruta is null ? null : nombreArchivo,
-            RutaArchivoSoporte = ruta
+            // El primero también en las columnas viejas (lotes anteriores / rollback de la Api).
+            NombreArchivoSoporte = guardados.Count > 0 ? guardados[0].Archivo.NombreArchivo : null,
+            RutaArchivoSoporte = guardados.Count > 0 ? guardados[0].Ruta : null
         };
+        for (var n = 0; n < guardados.Count; n++)
+            lote.Soportes.Add(new SoporteLotePago
+            {
+                NombreArchivo = guardados[n].Archivo.NombreArchivo,
+                RutaArchivo = guardados[n].Ruta,
+                ContentType = guardados[n].Archivo.ContentType,
+                TamanoBytes = guardados[n].Archivo.TamanoBytes,
+                Orden = n + 1
+            });
         db.LotesPago.Add(lote);
         await db.SaveChangesAsync(ct);
 
@@ -118,26 +136,27 @@ public class PagosService(AppDbContext db, IInstanciaDocumentoService instanciaS
             i.PagoProveedor!.LotePagoId = lote.Id;
 
             int? adjuntoId = null;
-            if (ruta is not null && (i.Valor ?? 0) > 0)
+            if ((i.Valor ?? 0) > 0)
             {
-                var adjunto = new Adjunto
+                foreach (var (archivo, ruta) in guardados)
                 {
-                    InstanciaDocumentoId = i.Id,
-                    NombreArchivo = nombreArchivo!,
-                    RutaArchivo = ruta,
-                    ContentType = contentType,
-                    TamanoBytes = tamanoBytes,
-                    SubidoPorUsuarioId = usuarioId,
-                    FechaCarga = ahora
-                };
-                db.Adjuntos.Add(adjunto);
-                await db.SaveChangesAsync(ct);
-                adjuntoId = adjunto.Id;
+                    var adjunto = new Adjunto
+                    {
+                        InstanciaDocumentoId = i.Id,
+                        NombreArchivo = archivo.NombreArchivo,
+                        RutaArchivo = ruta,
+                        ContentType = archivo.ContentType,
+                        TamanoBytes = archivo.TamanoBytes,
+                        SubidoPorUsuarioId = usuarioId,
+                        FechaCarga = ahora
+                    };
+                    db.Adjuntos.Add(adjunto);
+                    await db.SaveChangesAsync(ct);
+                    // El primero es "el" soporte de pago de la orden (el paso de pago exige uno).
+                    adjuntoId ??= adjunto.Id;
+                }
             }
-            else
-            {
-                await db.SaveChangesAsync(ct);
-            }
+            await db.SaveChangesAsync(ct);
 
             await instanciaService.EjecutarAccionAsync(i.Id, usuarioId, new EjecutarAccionDto(
                 TipoAccion.Aprobado,
@@ -183,16 +202,16 @@ public class PagosService(AppDbContext db, IInstanciaDocumentoService instanciaS
             var tercero = p.NombreTercero ?? orden.Proveedor ?? p.Identificacion;
             var origen = p.EsExtraordinario ? "el pago extraordinario" : $"la orden de pago de la relación {p.RelacionPago?.Numero}";
             var filas = string.Concat(LineasDe(orden).Select(l =>
-                $"<tr><td>{Html(l.Etiqueta)}</td><td>{Html(l.Detalle)}</td><td style=\"text-align:right\">{l.Valor:N0}</td></tr>"));
+                $"<tr><td>{Html(l.Etiqueta)}</td><td>{Html(l.Detalle)}</td><td style=\"text-align:right\">{FormatoPesos.Miles(l.Valor)}</td></tr>"));
             var cuerpo =
                 $"<p>{Html(pagador)} <b>rechazó</b> {Html(origen)}" +
-                $"a <b>{Html(tercero)}</b> (NIT {Html(p.Identificacion)}) por <b>${(orden.Valor ?? 0):N0}</b>.</p>" +
+                $"a <b>{Html(tercero)}</b> (NIT {Html(p.Identificacion)}) por <b>${FormatoPesos.Miles((orden.Valor ?? 0))}</b>.</p>" +
                 $"<p><b>Motivo:</b> {Html(comentario.Trim())}</p>" +
                 "<table border=\"1\" cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse:collapse\">" +
                 $"<tr><th>Documento</th><th>Detalle</th><th>Valor</th></tr>{filas}</table>" +
                 (p.EsExtraordinario ? "" : "<p>Las facturas quedaron otra vez disponibles en Cuentas por pagar, por si las querés incluir en otra relación.</p>");
             await notificacionService.NotificarHtmlAsync(orden.Id, orden.CreadoPorUsuarioId,
-                $"[Jimaco Aprobaciones] Pago rechazado: {tercero} por ${(orden.Valor ?? 0):N0}", cuerpo, "/cuentas-por-pagar/seguimiento", ct);
+                $"[Jimaco Aprobaciones] Pago rechazado: {tercero} por ${FormatoPesos.Miles((orden.Valor ?? 0))}", cuerpo, "/cuentas-por-pagar/seguimiento", ct);
         }
         catch (Exception) when (!ct.IsCancellationRequested)
         {
@@ -219,7 +238,7 @@ public class PagosService(AppDbContext db, IInstanciaDocumentoService instanciaS
 
     public async Task<PaginaDto<SeguimientoPagoDto>> ListarRechazadosAsync(FiltroPagosDto filtro, int usuarioId, CancellationToken ct = default)
     {
-        await ExigirPermisoAsync(usuarioId, ct);
+        await ExigirConsultaAsync(usuarioId, ct);
 
         var tamano = ConsultaSeguimientoPagos.TamanoPagina(filtro.TamanoPagina, 15);
         var pagina = Math.Max(1, filtro.Pagina);
@@ -248,7 +267,7 @@ public class PagosService(AppDbContext db, IInstanciaDocumentoService instanciaS
 
     public async Task<PaginaDto<LotePagoDto>> ListarLotesAsync(FiltroPagosDto filtro, int usuarioId, CancellationToken ct = default)
     {
-        await ExigirPermisoAsync(usuarioId, ct);
+        await ExigirConsultaAsync(usuarioId, ct);
 
         var tamano = ConsultaSeguimientoPagos.TamanoPagina(filtro.TamanoPagina, 10);
         var pagina = Math.Max(1, filtro.Pagina);
@@ -269,11 +288,22 @@ public class PagosService(AppDbContext db, IInstanciaDocumentoService instanciaS
         return new PaginaDto<LotePagoDto>(items, total, pagina, tamano);
     }
 
-    public async Task<(Stream Contenido, string NombreArchivo)> DescargarSoporteLoteAsync(int lotePagoId, int usuarioId, CancellationToken ct = default)
+    public async Task<(Stream Contenido, string NombreArchivo)> DescargarSoporteLoteAsync(int lotePagoId, int? soporteId, int usuarioId, CancellationToken ct = default)
     {
-        await ExigirPermisoAsync(usuarioId, ct);
-        var lote = await db.LotesPago.AsNoTracking().FirstOrDefaultAsync(l => l.Id == lotePagoId, ct)
+        await ExigirConsultaAsync(usuarioId, ct);
+        var lote = await db.LotesPago.AsNoTracking().Include(l => l.Soportes).FirstOrDefaultAsync(l => l.Id == lotePagoId, ct)
             ?? throw new KeyNotFoundException("Lote no encontrado.");
+
+        if (soporteId is int id && id > 0)
+        {
+            var s = lote.Soportes.FirstOrDefault(x => x.Id == id) ?? throw new KeyNotFoundException("Ese soporte no es de este lote.");
+            return (await almacenamiento.AbrirAsync(s.RutaArchivo, ct), s.NombreArchivo);
+        }
+
+        // Sin id (o 0): el primero. Los lotes de antes de 2026-11-23 solo tienen las columnas viejas.
+        var primero = lote.Soportes.OrderBy(x => x.Orden).FirstOrDefault();
+        if (primero is not null)
+            return (await almacenamiento.AbrirAsync(primero.RutaArchivo, ct), primero.NombreArchivo);
         if (lote.RutaArchivoSoporte is null)
             throw new KeyNotFoundException("Ese lote no tiene soporte (no movió plata).");
         return (await almacenamiento.AbrirAsync(lote.RutaArchivoSoporte, ct), lote.NombreArchivoSoporte ?? "soporte.pdf");
@@ -284,6 +314,7 @@ public class PagosService(AppDbContext db, IInstanciaDocumentoService instanciaS
         var lotes = await db.LotesPago.AsNoTracking()
             .Where(filtro)
             .Include(l => l.Pagos).ThenInclude(p => p.InstanciaDocumento)
+            .Include(l => l.Soportes)
             .OrderByDescending(l => l.Numero)
             .Take(maximo)
             .AsSplitQuery()
@@ -293,11 +324,32 @@ public class PagosService(AppDbContext db, IInstanciaDocumentoService instanciaS
 
         return lotes.Select(l => new LotePagoDto(
             l.Id, l.Numero, l.Fecha, l.FechaPago, l.NombreBanco, l.Total, pagadores.GetValueOrDefault(l.PagadoPorUsuarioId),
-            l.RutaArchivoSoporte is not null,
+            l.RutaArchivoSoporte is not null || l.Soportes.Count > 0,
             l.Pagos.OrderBy(p => p.NombreTercero).Select(p => new LoteOrdenDto(
                 p.InstanciaDocumentoId, p.InstanciaDocumento.NumeroReferencia, p.NombreTercero ?? p.InstanciaDocumento.Proveedor ?? p.Identificacion,
-                p.EsExtraordinario, p.InstanciaDocumento.Valor ?? 0, p.PrefijoCE, p.NumeroCE, p.PendienteCreacionCE, p.ConflictoCreacionCE)).ToList()))
+                p.EsExtraordinario, p.InstanciaDocumento.Valor ?? 0, p.PrefijoCE, p.NumeroCE, p.PendienteCreacionCE, p.ConflictoCreacionCE)).ToList(),
+            SoportesDe(l)))
             .ToList();
+    }
+
+    /// <summary>Los soportes del lote; un lote viejo (solo columnas antiguas) muestra el suyo con Id 0.</summary>
+    internal static List<SoporteLotePagoDto> SoportesDe(LotePago l) =>
+        l.Soportes.Count > 0
+            ? l.Soportes.OrderBy(s => s.Orden).Select(s => new SoporteLotePagoDto(s.Id, s.NombreArchivo, s.TamanoBytes)).ToList()
+            : l.RutaArchivoSoporte is not null ? [new SoporteLotePagoDto(0, l.NombreArchivoSoporte ?? "soporte.pdf", 0)] : [];
+
+    /// <summary>Más que suficiente para un lote; evita subir una carpeta entera por error.</summary>
+    internal const int MaximoSoportes = 15;
+
+    /// <summary>Ver lotes pagados, soportes y rechazados: quien paga o quien solo consulta (contable).</summary>
+    private async Task ExigirConsultaAsync(int usuarioId, CancellationToken ct)
+    {
+        var tienePermiso = await db.UsuarioRoles
+            .Where(ur => ur.UsuarioId == usuarioId)
+            .AnyAsync(ur => ur.Rol.Activo && (ur.Rol.PuedePagarCuentas || ur.Rol.PuedeConsultarPagos), ct);
+
+        if (!tienePermiso)
+            throw new UnauthorizedAccessException("No tenés permiso para consultar los pagos.");
     }
 
     internal IQueryable<InstanciaDocumento> ConsultarOrdenes() => ConsultarOrdenes(db);
