@@ -17,10 +17,7 @@ public class InstanciaDocumentoService(
     AppDbContext db,
     IAlmacenamientoArchivos almacenamiento,
     INotificacionService notificacionService,
-    TimeProvider timeProvider,
-    // Opcional (2026-11-23): solo para pegar el PDF de cada orden al reporte de lote pagado que le
-    // llega a Contabilidad. Sin él (pruebas) el reporte sale igual, sin esos PDF.
-    IDocumentoPdfGenerador? pdfGenerador = null) : IInstanciaDocumentoService
+    TimeProvider timeProvider) : IInstanciaDocumentoService
 {
     /// <summary>
     /// Id "de mentira" que representa "El emisor" como una opción más de destino de devolución,
@@ -1058,9 +1055,9 @@ public class InstanciaDocumentoService(
     /// <summary>
     /// Reporte del lote para Contabilidad (2026-11-23, pedido real): a quien tenga un rol con
     /// <see cref="Rol.PuedeConsultarPagos"/>. Terceros pagados con sus facturas/anticipos y el CE que
-    /// quedó en World Office, y pegados al correo los soportes del pago y el PDF de cada orden (que
-    /// trae la copia del CE). Si los archivos pesan demasiado para un correo, van solo los PDF de las
-    /// órdenes y se avisa que los soportes se descargan desde el sistema.
+    /// quedó en World Office (prefijo y número), y pegados al correo SOLO los soportes del lote — un
+    /// correo por lote, sin un PDF por orden (pedido explícito). Si los soportes pesan demasiado para
+    /// un correo, se avisa que se descargan desde el sistema.
     /// </summary>
     public async Task<int> EnviarReporteLoteAContabilidadAsync(int lotePagoId, CancellationToken ct = default)
     {
@@ -1108,30 +1105,10 @@ public class InstanciaDocumentoService(
                    $"<tr><td colspan=\"2\"><b>Neto pagado</b></td><td style=\"text-align:right\"><b>{FormatoPesos.Miles((o.Valor ?? 0))}</b></td></tr></table>";
         }));
 
-        // ---- Adjuntos: PDF de cada orden (con la copia del CE) + los soportes del pago.
+        // ---- Adjuntos: solo el o los soportes del lote.
         const long tope = 18_000_000; // bien por debajo de los ~20-25 MB que aceptan los buzones
         var adjuntos = new List<AdjuntoCorreo>();
         long peso = 0;
-        if (pdfGenerador is not null)
-        {
-            foreach (var o in ordenes)
-            {
-                try
-                {
-                    var detalleDto = MapearDetalleDto(await CargarConDetalle().FirstAsync(i => i.Id == o.Id, ct));
-                    var pdf = pdfGenerador.Generar(detalleDto);
-                    var p = o.PagoProveedor!;
-                    var ce = p.NumeroCE is { } n ? $"{p.PrefijoCE} {n:0}" : "sin CE";
-                    var nombre = $"{ce} - {p.NombreTercero ?? o.Proveedor ?? p.Identificacion}";
-                    adjuntos.Add(new AdjuntoCorreo(NombreArchivoSeguro(nombre) + ".pdf", pdf, "application/pdf"));
-                    peso += pdf.Length;
-                }
-                catch (Exception) when (!ct.IsCancellationRequested)
-                {
-                    // Si una orden no se puede dibujar, el reporte sale igual con las demás.
-                }
-            }
-        }
 
         var soportes = lote.Soportes.Count > 0
             ? lote.Soportes.OrderBy(x => x.Orden).Select(x => (x.NombreArchivo, x.RutaArchivo, x.ContentType)).ToList()
@@ -1168,21 +1145,13 @@ public class InstanciaDocumentoService(
             "<h3 style=\"margin-top:22px\">Detalle por tercero</h3>" + detalle +
             "<p style=\"margin-top:18px\">Adjuntos: " +
             (soportes.Count - soportesFuera > 0 ? $"{soportes.Count - soportesFuera} soporte(s) del pago" : "sin soporte del pago (el lote no movió plata)") +
-            (pdfGenerador is null ? "" : " y el PDF de cada orden de pago con la copia de su comprobante de egreso") + ".</p>" +
+            ".</p>" +
             (soportesFuera > 0 ? $"<p><b>{soportesFuera} soporte(s) no se adjuntaron</b> (pesan demasiado para un correo): descárguelos desde Pagos → Pagados, lote {lote.Numero}.</p>" : "");
 
         foreach (var usuarioId in contables)
             await NotificarSinRomperAsync(() => notificacionService.NotificarHtmlConAdjuntosAsync(
                 lote.Pagos.First().InstanciaDocumentoId, usuarioId, asunto, cuerpo, "/pagos", adjuntos, ct));
         return contables.Count;
-    }
-
-    /// <summary>Quita lo que Windows/los correos no aceptan en un nombre de archivo y lo acorta.</summary>
-    private static string NombreArchivoSeguro(string nombre)
-    {
-        var invalidos = Path.GetInvalidFileNameChars().Concat(['/', '\\', ':', '*', '?', '"', '<', '>', '|']).ToHashSet();
-        var limpio = new string(nombre.Select(c => invalidos.Contains(c) ? ' ' : c).ToArray()).Trim();
-        return limpio.Length > 80 ? limpio[..80].Trim() : limpio;
     }
 
     public async Task ReportarConflictoComprobanteEgresoAsync(int instanciaDocumentoId, string mensaje, CancellationToken ct = default)

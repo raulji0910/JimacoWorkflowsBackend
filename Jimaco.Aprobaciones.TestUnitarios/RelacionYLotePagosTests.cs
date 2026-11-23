@@ -408,7 +408,7 @@ public class RelacionYLotePagosTests
     }
 
     [Fact]
-    public async Task LoteTerminado_MandaElReporteAContabilidad_ConSoportesYElPdfDeCadaOrden()
+    public async Task LoteTerminado_MandaUnSoloReporteAContabilidad_ConLosCEEnElCuerpoYSoloLosSoportesAdjuntos()
     {
         await SembrarAsync();
         var contableId = await ContableAsync();
@@ -418,7 +418,7 @@ public class RelacionYLotePagosTests
             .ReturnsAsync(() => new MemoryStream([1, 2, 3]));
         await Pagos().PagarLoteAsync(ids, 13650, Hoy, Pdfs("transferencia-1.pdf", "transferencia-2.pdf"), pagadorId);
 
-        var instancias = new InstanciaDocumentoService(db, almacenamiento.Object, notificaciones.Object, reloj, new DocumentoPdfGenerador());
+        var instancias = new InstanciaDocumentoService(db, almacenamiento.Object, notificaciones.Object, reloj);
         var cxp = new CuentasPorPagarService(db, instancias, notificaciones.Object, reloj);
         async Task CrearCEAsync(int id, int numero)
         {
@@ -447,8 +447,7 @@ public class RelacionYLotePagosTests
         var adjuntos = (IReadOnlyList<AdjuntoCorreo>)reporte.Arguments[5];
         Assert.Contains(adjuntos, a => a.NombreArchivo == "Soporte - transferencia-1.pdf");
         Assert.Contains(adjuntos, a => a.NombreArchivo == "Soporte - transferencia-2.pdf");
-        Assert.Contains(adjuntos, a => a.NombreArchivo.StartsWith("CEJ 15500 - PROVEEDOR") && a.Contenido.Length > 1000);
-        Assert.Contains(adjuntos, a => a.NombreArchivo.StartsWith("CEJ 15501 - PROVEEDOR"));
+        Assert.Equal(2, adjuntos.Count); // solo los 2 soportes del lote, nada por orden
     }
 
     private List<Moq.IInvocation> ReportesAContabilidad() =>
