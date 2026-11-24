@@ -279,4 +279,11 @@ public class SincronizacionConciliacion
     public int Id { get; set; }
 
     public DateTime? UltimaSincronizacionOrdenes { get; set; }
+
+    /// <summary>
+    /// Versión de la lectura del XML con la que están calculados los totales guardados de las facturas
+    /// (2026-11-24). Si el código trae una versión mayor (ConciliacionService.VersionLecturaXml), al
+    /// arrancar la Api se releen los XML guardados y se corrigen Subtotal/IVA/Total, una sola vez.
+    /// </summary>
+    public int VersionLecturaXml { get; set; }
 }

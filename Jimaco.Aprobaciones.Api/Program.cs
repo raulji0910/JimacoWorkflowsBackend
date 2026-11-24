@@ -25,6 +25,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 builder.Services.AddNegocio();
 builder.Services.AddHostedService<HojaAlistamientoAlertaService>();
+builder.Services.AddHostedService<RecalculoTotalesConciliacionService>();
 
 var jwtSecret = builder.Configuration["Jwt:Secret"]
     ?? throw new InvalidOperationException("Falta configurar Jwt:Secret.");

@@ -26,6 +26,62 @@ public class ConciliacionService(AppDbContext db, TimeProvider reloj) : IConcili
     /// <summary>Tope de facturas por descarga de XML (un ZIP de 500 facturas ronda unos pocos MB).</summary>
     public const int MaximoXmlPorDescarga = 500;
 
+    /// <summary>
+    /// Versión de la lectura del XML (ver SincronizacionConciliacion.VersionLecturaXml). 2 = 2026-11-24:
+    /// el subtotal deja de ser TaxExclusiveAmount (base gravable: 0 en facturas sin IVA) y pasa a ser el
+    /// valor de los renglones, salvo descuento global antes del IVA.
+    /// </summary>
+    public const int VersionLecturaXml = 2;
+
+    // ======================== Mantenimiento ========================
+
+    public async Task<int?> RecalcularTotalesSiHaceFaltaAsync(CancellationToken ct = default)
+    {
+        var marca = await db.SincronizacionConciliacion.FirstOrDefaultAsync(s => s.Id == 1, ct);
+        if (marca?.VersionLecturaXml >= VersionLecturaXml)
+            return null;
+
+        // Por tandas: el servidor anda justo de memoria y cada XML pesa ~15 KB comprimido.
+        var cambiadas = 0;
+        var ultimoId = 0;
+        while (true)
+        {
+            var tanda = await db.FacturasProveedor
+                .Where(f => f.Id > ultimoId)
+                .OrderBy(f => f.Id)
+                .Take(200)
+                .ToListAsync(ct);
+            if (tanda.Count == 0)
+                break;
+
+            foreach (var factura in tanda)
+            {
+                var leida = LectorFacturaElectronica.LeerXml(XmlComprimido.Descomprimir(factura.XmlGzip));
+                if (leida is null)
+                    continue;
+                if (factura.Subtotal != leida.Subtotal || factura.Iva != leida.Iva || factura.Total != leida.Total)
+                {
+                    factura.Subtotal = leida.Subtotal;
+                    factura.Iva = leida.Iva;
+                    factura.Total = leida.Total;
+                    cambiadas++;
+                }
+            }
+
+            await db.SaveChangesAsync(ct);
+            ultimoId = tanda[^1].Id;
+            db.ChangeTracker.Clear();
+        }
+
+        marca = await db.SincronizacionConciliacion.FirstOrDefaultAsync(s => s.Id == 1, ct);
+        if (marca is null)
+            db.SincronizacionConciliacion.Add(new SincronizacionConciliacion { Id = 1, VersionLecturaXml = VersionLecturaXml });
+        else
+            marca.VersionLecturaXml = VersionLecturaXml;
+        await db.SaveChangesAsync(ct);
+        return cambiadas;
+    }
+
     // ======================== Lo que sube el Sincronizador ========================
 
     /// <summary>Correo de facturación o --carpeta. No valida receptor: ese buzón solo recibe facturas de compra.</summary>

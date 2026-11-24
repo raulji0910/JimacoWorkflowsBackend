@@ -75,14 +75,34 @@ public static class LectorFacturaElectronica
             NitEmisor: Nit(doc.Element(Cac + "AccountingSupplierParty")),
             NombreEmisor: Texto(doc.Element(Cac + "AccountingSupplierParty")?.Descendants(Cbc + "RegistrationName").FirstOrDefault()) ?? "",
             NitReceptor: Nit(doc.Element(Cac + "AccountingCustomerParty")),
-            // TaxExclusiveAmount ya descuenta los descuentos a nivel factura (LineExtension no).
-            Subtotal: Numero(totales?.Element(Cbc + "TaxExclusiveAmount")),
+            Subtotal: Subtotal(totales),
             Iva: doc.Elements(Cac + "TaxTotal").Where(EsIva).Sum(t => Numero(t.Element(Cbc + "TaxAmount"))),
             Total: Numero(totales?.Element(Cbc + "PayableAmount")),
             ReferenciaOrden: Texto(doc.Element(Cac + "OrderReference")?.Element(Cbc + "ID")),
             Renglones: doc.Elements().Where(e => e.Name.LocalName is "InvoiceLine" or "CreditNoteLine" or "DebitNoteLine")
                 .Select(MapearRenglon)
                 .ToList());
+    }
+
+    /// <summary>
+    /// Subtotal de los productos antes de IVA (2026-11-24). En la DIAN, <c>TaxExclusiveAmount</c> es la
+    /// BASE GRAVABLE, no el subtotal: vale 0 en una factura sin IVA (agua, gasolina), deja por fuera los
+    /// renglones sin IVA en una mixta y en los servicios con AIU es solo el 10 % (el IVA va sobre la
+    /// utilidad). Por eso el subtotal es <c>LineExtensionAmount</c> (suma de los renglones), salvo
+    /// cuando hay un descuento global ANTES del IVA (caso real INVESA: renglones 100.000, descuento
+    /// 25.000, base 75.000): ahí la base es exactamente renglones − descuento y la OC dice 75.000. Un
+    /// descuento que no cuadra así es de pronto pago (después del IVA) y no cambia el costo.
+    /// Medido sobre las 5.291 facturas de producción: 4.480 quedan igual, 809 se corrigen.
+    /// </summary>
+    private static decimal Subtotal(XElement? totales)
+    {
+        var renglones = Numero(totales?.Element(Cbc + "LineExtensionAmount"));
+        var baseGravable = Numero(totales?.Element(Cbc + "TaxExclusiveAmount"));
+        var descuento = Numero(totales?.Element(Cbc + "AllowanceTotalAmount"));
+
+        return descuento > 0 && Math.Abs(baseGravable - (renglones - descuento)) <= 1m
+            ? renglones - descuento
+            : renglones;
     }
 
     private static RenglonFacturaElectronica MapearRenglon(XElement renglon)

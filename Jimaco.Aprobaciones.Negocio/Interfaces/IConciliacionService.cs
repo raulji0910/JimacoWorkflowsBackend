@@ -5,6 +5,12 @@ namespace Jimaco.Aprobaciones.Negocio.Interfaces;
 /// <summary>Conciliación de facturas de proveedor (XML DIAN) vs OC de World Office — ver ConciliacionService.</summary>
 public interface IConciliacionService
 {
+    /// <summary>
+    /// Relee los XML guardados y corrige Subtotal/IVA/Total de las facturas cuando cambió la forma de
+    /// leerlos (una sola vez por versión). Devuelve cuántas facturas cambiaron, o null si ya estaba al día.
+    /// </summary>
+    Task<int?> RecalcularTotalesSiHaceFaltaAsync(CancellationToken ct = default);
+
     // Sincronizador (usuario de servicio).
     Task<RegistroFacturasResultadoDto> RegistrarFacturasAsync(IReadOnlyList<FacturaXmlEntradaDto> facturas, CancellationToken ct = default);
     Task<SincronizacionOrdenesResultadoDto> SincronizarOrdenesAsync(IReadOnlyList<OrdenCompraEntradaDto> ordenes, CancellationToken ct = default);

@@ -1724,6 +1724,9 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Property<DateTime?>("UltimaSincronizacionOrdenes")
                         .HasColumnType("datetime2");
 
+                    b.Property<int>("VersionLecturaXml")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
 
                     b.ToTable("SincronizacionConciliacion");
