@@ -332,6 +332,32 @@ public class JimacoAprobacionesClient(HttpClient http, string email, string pass
         await LanzarSiErrorAsync(response, ct);
     }
 
+    // ---- Conciliación de facturas de proveedor (2026-11-24, modo --conciliacion) ----
+
+    public Task<RegistroFacturasResultadoDto> RegistrarFacturasConciliacionAsync(IReadOnlyList<FacturaXmlEntradaDto> facturas, CancellationToken ct = default) =>
+        PostarAsync<RegistroFacturasResultadoDto>("api/sincronizacion/conciliacion/facturas", facturas, ct);
+
+    public Task<SincronizacionOrdenesResultadoDto> SincronizarOrdenesConciliacionAsync(IReadOnlyList<OrdenCompraEntradaDto> ordenes, CancellationToken ct = default) =>
+        PostarAsync<SincronizacionOrdenesResultadoDto>("api/sincronizacion/conciliacion/ordenes", ordenes, ct);
+
+    public Task<SincronizacionFacturasCompraResultadoDto> SincronizarFacturasCompraConciliacionAsync(SincronizacionFacturasCompraEntradaDto entrada, CancellationToken ct = default) =>
+        PostarAsync<SincronizacionFacturasCompraResultadoDto>("api/sincronizacion/conciliacion/facturas-compra", entrada, ct);
+
+    private async Task<T> PostarAsync<T>(string ruta, object cuerpo, CancellationToken ct)
+    {
+        await AsegurarTokenAsync(ct);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, ruta)
+        {
+            Content = JsonContent.Create(cuerpo, cuerpo.GetType(), options: JsonOpciones)
+        };
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<T>(JsonOpciones, ct))!;
+    }
+
     private async Task AsegurarTokenAsync(CancellationToken ct)
     {
         // Un margen de 1 minuto antes de que expire, para no arrancar una petición con un token

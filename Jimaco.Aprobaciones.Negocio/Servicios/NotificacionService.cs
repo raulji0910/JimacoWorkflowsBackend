@@ -361,6 +361,21 @@ public class NotificacionService(
         await CrearYEnviarAsync(instanciaDocumentoId, usuario, asunto, cuerpoHtml, ct);
     }
 
+    public async Task NotificarHtmlConAdjuntosAsync(int? instanciaDocumentoId, int usuarioId, string asunto, string cuerpoHtml, string? rutaFrontend,
+        IReadOnlyList<AdjuntoCorreo> adjuntos, CancellationToken ct = default)
+    {
+        var usuario = await db.Usuarios.FirstOrDefaultAsync(u => u.Id == usuarioId && u.Activo, ct);
+        if (usuario is null) return;
+
+        if (!string.IsNullOrWhiteSpace(rutaFrontend))
+        {
+            var frontendBaseUrl = (configuration["App:FrontendBaseUrl"] ?? "").TrimEnd('/');
+            cuerpoHtml += $"<p><a href=\"{frontendBaseUrl}{rutaFrontend}\">Abrir en Jimaco Aprobaciones</a></p>";
+        }
+
+        await CrearYEnviarAsync(instanciaDocumentoId, usuario, asunto, cuerpoHtml, ct, adjuntos.Count > 0 ? adjuntos : null);
+    }
+
     public async Task EnviarPruebaAsync(string destinatarioEmail, CancellationToken ct = default)
     {
         await emailSender.EnviarAsync(
@@ -394,7 +409,9 @@ public class NotificacionService(
             // demás destinatarios de ese mismo aviso). Enlazado a "ct" solo para cortar si el
             // llamador de verdad se cancela — un timeout acá nunca cancela "ct" de vuelta.
             using var limiteEnvio = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            limiteEnvio.CancelAfter(TimeSpan.FromSeconds(15));
+            // Con adjuntos se da más margen (subir varios MB al SMTP tarda): +1 s por cada 200 KB, tope 2 min.
+            var pesoAdjuntos = adjuntos?.Sum(a => (long)a.Contenido.Length) ?? 0;
+            limiteEnvio.CancelAfter(TimeSpan.FromSeconds(Math.Min(120, 15 + pesoAdjuntos / 200_000)));
             await emailSender.EnviarAsync(usuario.Email, asunto, cuerpoHtml, adjuntos, limiteEnvio.Token);
             notificacion.Estado = EstadoNotificacion.Enviada;
         }

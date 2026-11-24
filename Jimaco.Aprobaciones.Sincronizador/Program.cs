@@ -14,6 +14,12 @@ var config = new ConfigurationBuilder()
     .AddEnvironmentVariables()
     .Build();
 
+// ---- Modo conciliación (2026-11-24): instalación y Tarea Programada APARTE de la de aprobaciones ----
+// "Jimaco.Aprobaciones.Sincronizador.exe --conciliacion" solo sube OC, FCJ y los XML de
+// facturacion@ para la conciliación de facturas de proveedor; no toca nada de aprobaciones.
+if (args.Contains("--conciliacion"))
+    return await ConciliacionRunner.EjecutarAsync(config, args);
+
 var connectionStringWorldOffice = config["WorldOffice:ConnectionString"]
     ?? throw new InvalidOperationException("Falta configurar WorldOffice:ConnectionString.");
 var jimacoApiUrl = config["Jimaco:ApiBaseUrl"]
@@ -606,8 +612,12 @@ else
 {
     try
     {
-        var prefijosCuenta = (config["CuentasPorPagar:PrefijosCuenta"] ?? "2205,2210,2335")
-            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        // Las cuentas las maneja el administrador en Config. de pagos (2026-11-23); el appsettings
+        // (o el valor fijo) queda solo de respaldo si la Api no responde o es una versión vieja.
+        var cuentasConfiguradas = (await ObtenerConfiguracionCEAsync())?.CuentasIncluidas;
+        var prefijosCuenta = Jimaco.Aprobaciones.Modelo.Entidades.ConfiguracionCuentasPorPagar.SepararCuentas(
+            !string.IsNullOrWhiteSpace(cuentasConfiguradas) ? cuentasConfiguradas
+            : config["CuentasPorPagar:PrefijosCuenta"] ?? Jimaco.Aprobaciones.Modelo.Entidades.ConfiguracionCuentasPorPagar.CuentasIncluidasPorDefecto).ToArray();
         var cuentaAnticipos = config["CuentasPorPagar:CuentaAnticipos"] ?? "133005";
 
         var prefijosBanco = (config["CuentasPorPagar:CuentasBanco"] ?? "1105,1110")
@@ -743,6 +753,7 @@ else
 }
 
 Console.WriteLine($"[{DateTime.Now:s}] Listo.");
+return 0;
 
 // Texto libre escrito a mano ("16113", "COT16113"...) normalizado a la misma forma canónica que
 // usa el resto del Sincronizador para números de documento (sin ceros a la izquierda).

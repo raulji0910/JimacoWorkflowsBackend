@@ -23,6 +23,12 @@ public interface IInstanciaDocumentoService
     /// <summary>Si todas las órdenes del lote ya tienen su CE adjunto (o un conflicto), manda UN aviso de "lote terminado" — una sola vez.</summary>
     Task NotificarLotePagoSiTerminoAsync(int lotePagoId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Reporte del lote a Contabilidad (Rol.PuedeConsultarPagos), con soportes y PDF de cada orden.
+    /// Sale solo al terminar el lote; esto lo manda (o reenvía) a pedido. Devuelve a cuántos usuarios.
+    /// </summary>
+    Task<int> EnviarReporteLoteAContabilidadAsync(int lotePagoId, CancellationToken ct = default);
+
     /// <summary>El emisor reenvía un documento Devuelto — vuelve a entrar al flujo desde el primer paso.</summary>
     Task<InstanciaDocumentoDetalleDto> ReenviarAsync(int id, int usuarioId, CancellationToken ct = default);
 

@@ -7,8 +7,9 @@ public interface IPagosService
 {
     Task<IReadOnlyList<OrdenPagoPendienteDto>> ListarPendientesAsync(int usuarioId, CancellationToken ct = default);
 
+    /// <param name="soportes">Uno o varios PDF (mínimo uno si el lote mueve plata) — 2026-11-23.</param>
     Task<LotePagoDto> PagarLoteAsync(IReadOnlyList<int> instanciasIds, int? idCuentaBancoWO, DateTime? fechaPago,
-        string? nombreArchivo, string? contentType, long tamanoBytes, Stream? soporte, int usuarioId, CancellationToken ct = default);
+        IReadOnlyList<ArchivoSoporteInput> soportes, int usuarioId, CancellationToken ct = default);
 
     Task RechazarAsync(int instanciaDocumentoId, string comentario, int usuarioId, CancellationToken ct = default);
 
@@ -17,5 +18,12 @@ public interface IPagosService
 
     Task<PaginaDto<LotePagoDto>> ListarLotesAsync(FiltroPagosDto filtro, int usuarioId, CancellationToken ct = default);
 
-    Task<(Stream Contenido, string NombreArchivo)> DescargarSoporteLoteAsync(int lotePagoId, int usuarioId, CancellationToken ct = default);
+    /// <summary>
+    /// Manda (o reenvía) el reporte de un lote YA TERMINADO a Contabilidad — 2026-11-23, para lotes
+    /// pagados antes de que existiera el reporte o si el correo no llegó. Devuelve a cuántos usuarios.
+    /// </summary>
+    Task<int> EnviarReporteContabilidadAsync(int lotePagoId, int usuarioId, CancellationToken ct = default);
+
+    /// <param name="soporteId">null = el primero del lote.</param>
+    Task<(Stream Contenido, string NombreArchivo)> DescargarSoporteLoteAsync(int lotePagoId, int? soporteId, int usuarioId, CancellationToken ct = default);
 }

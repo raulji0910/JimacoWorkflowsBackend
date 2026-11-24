@@ -56,7 +56,9 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(corsOrigins)
             .AllowAnyHeader()
-            .AllowAnyMethod();
+            .AllowAnyMethod()
+            // Para que el navegador deje leer el nombre del archivo en las descargas (XML de la conciliación).
+            .WithExposedHeaders("Content-Disposition");
     });
 });
 

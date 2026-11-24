@@ -1032,12 +1032,12 @@ public class InstanciaDocumentoService(
                 ? $"<span style=\"color:#b3261e\">Sin CE: {System.Net.WebUtility.HtmlEncode(p.ConflictoCreacionCE)}</span>"
                 : $"{p.PrefijoCE} {p.NumeroCE:0}";
             return $"<tr><td>{System.Net.WebUtility.HtmlEncode(p.NombreTercero ?? p.InstanciaDocumento.Proveedor ?? p.Identificacion)}</td>" +
-                   $"<td style=\"text-align:right\">{(p.InstanciaDocumento.Valor ?? 0):N0}</td><td>{ce}</td></tr>";
+                   $"<td style=\"text-align:right\">{FormatoPesos.Miles((p.InstanciaDocumento.Valor ?? 0))}</td><td>{ce}</td></tr>";
         }));
         var conflictos = lote.Pagos.Count(p => p.ConflictoCreacionCE is not null);
         var asunto = $"[Jimaco Aprobaciones] Lote de pago {lote.Numero} pagado" + (conflictos > 0 ? $" ({conflictos} sin comprobante)" : "");
         var cuerpo = $"<p>El lote de pago <b>{lote.Numero}</b> ({lote.FechaPago:dd/MM/yyyy}, {System.Net.WebUtility.HtmlEncode(lote.NombreBanco ?? "sin banco")}) " +
-                     $"quedó registrado en World Office por <b>${lote.Total:N0}</b>.</p>" +
+                     $"quedó registrado en World Office por <b>${FormatoPesos.Miles(lote.Total)}</b>.</p>" +
                      "<table border=\"1\" cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse:collapse\">" +
                      $"<tr><th>Tercero</th><th>Valor</th><th>Comprobante</th></tr>{filas}</table>";
 
@@ -1048,6 +1048,110 @@ public class InstanciaDocumentoService(
         foreach (var usuarioId in destinatarios)
             await NotificarSinRomperAsync(() => notificacionService.NotificarHtmlAsync(
                 lote.Pagos.First().InstanciaDocumentoId, usuarioId, asunto, cuerpo, "/pagos", ct));
+
+        await NotificarSinRomperAsync(() => EnviarReporteLoteAContabilidadAsync(lote.Id, ct));
+    }
+
+    /// <summary>
+    /// Reporte del lote para Contabilidad (2026-11-23, pedido real): a quien tenga un rol con
+    /// <see cref="Rol.PuedeConsultarPagos"/>. Terceros pagados con sus facturas/anticipos y el CE que
+    /// quedó en World Office (prefijo y número), y pegados al correo SOLO los soportes del lote — un
+    /// correo por lote, sin un PDF por orden (pedido explícito). Si los soportes pesan demasiado para
+    /// un correo, se avisa que se descargan desde el sistema.
+    /// </summary>
+    public async Task<int> EnviarReporteLoteAContabilidadAsync(int lotePagoId, CancellationToken ct = default)
+    {
+        var contables = await db.UsuarioRoles
+            .Where(ur => ur.Rol.Activo && ur.Rol.PuedeConsultarPagos && ur.Usuario.Activo)
+            .Select(ur => ur.UsuarioId)
+            .Distinct()
+            .ToListAsync(ct);
+        if (contables.Count == 0) return 0;
+
+        var lote = await db.LotesPago.AsNoTracking()
+            .Include(l => l.Soportes)
+            .Include(l => l.Pagos)
+            .FirstOrDefaultAsync(l => l.Id == lotePagoId, ct);
+        if (lote is null || lote.Pagos.Count == 0) return 0;
+
+        var ids = lote.Pagos.Select(p => p.InstanciaDocumentoId).ToList();
+        var ordenes = (await PagosService.ConsultarOrdenes(db).Where(i => ids.Contains(i.Id)).ToListAsync(ct))
+            .OrderBy(i => i.PagoProveedor!.NombreTercero ?? i.Proveedor)
+            .ToList();
+        var pagador = await db.Usuarios.Where(u => u.Id == lote.PagadoPorUsuarioId).Select(u => u.Nombre).FirstOrDefaultAsync(ct);
+
+        static string H(string? t) => System.Net.WebUtility.HtmlEncode(t ?? "");
+        static string CeDe(PagoProveedor p) => p.ConflictoCreacionCE is not null
+            ? $"<span style=\"color:#b3261e\">Sin CE: {H(p.ConflictoCreacionCE)}</span>"
+            : $"<b>{H(p.PrefijoCE)} {p.NumeroCE:0}</b>";
+
+        var resumen = string.Concat(ordenes.Select(o =>
+        {
+            var p = o.PagoProveedor!;
+            return $"<tr><td>{H(p.NombreTercero ?? o.Proveedor ?? p.Identificacion)}</td><td>{H(p.Identificacion)}</td>" +
+                   $"<td>{CeDe(p)}</td><td style=\"text-align:right\">{FormatoPesos.Miles((o.Valor ?? 0))}</td></tr>";
+        }));
+
+        var detalle = string.Concat(ordenes.Select(o =>
+        {
+            var p = o.PagoProveedor!;
+            var filas = string.Concat(PagosService.LineasDe(o).Select(l =>
+                $"<tr><td>{H(l.Etiqueta)}</td><td>{H(l.Detalle)}</td><td style=\"text-align:right\">{(l.Valor < 0 ? "-" : "")}{FormatoPesos.Miles(Math.Abs(l.Valor))}</td></tr>"));
+            var origen = p.EsExtraordinario ? "Pago extraordinario" : p.RelacionPago is { } r ? $"Relación de pagos {r.Numero}" : "Orden de pago";
+            return $"<h4 style=\"margin:18px 0 4px\">{H(p.NombreTercero ?? o.Proveedor ?? p.Identificacion)} · NIT {H(p.Identificacion)} · {CeDe(p)}</h4>" +
+                   $"<p style=\"margin:0 0 6px;color:#555\">{H(origen)} · orden de pago {H(o.NumeroReferencia)}</p>" +
+                   "<table border=\"1\" cellpadding=\"5\" cellspacing=\"0\" style=\"border-collapse:collapse\">" +
+                   $"<tr><th>Documento</th><th>Detalle</th><th>Valor</th></tr>{filas}" +
+                   $"<tr><td colspan=\"2\"><b>Neto pagado</b></td><td style=\"text-align:right\"><b>{FormatoPesos.Miles((o.Valor ?? 0))}</b></td></tr></table>";
+        }));
+
+        // ---- Adjuntos: solo el o los soportes del lote.
+        const long tope = 18_000_000; // bien por debajo de los ~20-25 MB que aceptan los buzones
+        var adjuntos = new List<AdjuntoCorreo>();
+        long peso = 0;
+
+        var soportes = lote.Soportes.Count > 0
+            ? lote.Soportes.OrderBy(x => x.Orden).Select(x => (x.NombreArchivo, x.RutaArchivo, x.ContentType)).ToList()
+            : lote.RutaArchivoSoporte is not null ? [(lote.NombreArchivoSoporte ?? "soporte.pdf", lote.RutaArchivoSoporte, (string?)"application/pdf")] : [];
+        var soportesFuera = 0;
+        foreach (var (nombre, ruta, tipo) in soportes)
+        {
+            try
+            {
+                await using var stream = await almacenamiento.AbrirAsync(ruta, ct);
+                using var memoria = new MemoryStream();
+                await stream.CopyToAsync(memoria, ct);
+                if (peso + memoria.Length > tope) { soportesFuera++; continue; }
+                adjuntos.Add(new AdjuntoCorreo("Soporte - " + nombre, memoria.ToArray(), tipo ?? "application/pdf"));
+                peso += memoria.Length;
+            }
+            catch (Exception) when (!ct.IsCancellationRequested)
+            {
+                soportesFuera++;
+            }
+        }
+
+        var conCE = ordenes.Count(o => o.PagoProveedor!.ConflictoCreacionCE is null);
+        var conflictos = ordenes.Count - conCE;
+        var asunto = $"[Jimaco Aprobaciones] Reporte de pagos · Lote {lote.Numero} · {lote.FechaPago:dd/MM/yyyy}" +
+                     (conflictos > 0 ? $" ({conflictos} sin CE)" : "");
+        var cuerpo =
+            $"<p>Se pagó el <b>lote {lote.Numero}</b> el <b>{lote.FechaPago:dd/MM/yyyy}</b> desde <b>{H(lote.NombreBanco ?? "sin salida de plata")}</b>" +
+            (pagador is null ? "" : $", registrado por {H(pagador)}") + $": <b>${FormatoPesos.Miles(lote.Total)}</b> a {ordenes.Count} tercero(s).</p>" +
+            $"<p>El sistema creó en World Office {conCE} comprobante(s) de egreso" + (conflictos > 0 ? $"; <b style=\"color:#b3261e\">{conflictos} quedaron sin CE</b> (ver el motivo abajo)" : "") + ".</p>" +
+            "<table border=\"1\" cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse:collapse\">" +
+            $"<tr><th>Tercero</th><th>NIT</th><th>Comprobante</th><th>Valor</th></tr>{resumen}" +
+            $"<tr><td colspan=\"3\"><b>Total del lote</b></td><td style=\"text-align:right\"><b>{FormatoPesos.Miles(lote.Total)}</b></td></tr></table>" +
+            "<h3 style=\"margin-top:22px\">Detalle por tercero</h3>" + detalle +
+            "<p style=\"margin-top:18px\">Adjuntos: " +
+            (soportes.Count - soportesFuera > 0 ? $"{soportes.Count - soportesFuera} soporte(s) del pago" : "sin soporte del pago (el lote no movió plata)") +
+            ".</p>" +
+            (soportesFuera > 0 ? $"<p><b>{soportesFuera} soporte(s) no se adjuntaron</b> (pesan demasiado para un correo): descárguelos desde Pagos → Pagados, lote {lote.Numero}.</p>" : "");
+
+        foreach (var usuarioId in contables)
+            await NotificarSinRomperAsync(() => notificacionService.NotificarHtmlConAdjuntosAsync(
+                lote.Pagos.First().InstanciaDocumentoId, usuarioId, asunto, cuerpo, "/pagos", adjuntos, ct));
+        return contables.Count;
     }
 
     public async Task ReportarConflictoComprobanteEgresoAsync(int instanciaDocumentoId, string mensaje, CancellationToken ct = default)

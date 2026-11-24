@@ -42,6 +42,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<BorradorPagoProveedor> BorradoresPagoProveedor => Set<BorradorPagoProveedor>();
     public DbSet<RelacionPago> RelacionesPago => Set<RelacionPago>();
     public DbSet<LotePago> LotesPago => Set<LotePago>();
+    public DbSet<SoporteLotePago> SoportesLotePago => Set<SoporteLotePago>();
+    public DbSet<FacturaProveedor> FacturasProveedor => Set<FacturaProveedor>();
+    public DbSet<FacturaProveedorRenglon> FacturaProveedorRenglones => Set<FacturaProveedorRenglon>();
+    public DbSet<OrdenCompraWorldOffice> OrdenesCompraWorldOffice => Set<OrdenCompraWorldOffice>();
+    public DbSet<OrdenCompraWorldOfficeRenglon> OrdenCompraWorldOfficeRenglones => Set<OrdenCompraWorldOfficeRenglon>();
+    public DbSet<FacturaCompraWorldOffice> FacturasCompraWorldOffice => Set<FacturaCompraWorldOffice>();
+    public DbSet<ObservacionOrdenCompra> ObservacionesOrdenCompra => Set<ObservacionOrdenCompra>();
+    public DbSet<ObservacionFacturaProveedor> ObservacionesFacturaProveedor => Set<ObservacionFacturaProveedor>();
+    public DbSet<SincronizacionConciliacion> SincronizacionConciliacion => Set<SincronizacionConciliacion>();
     public DbSet<TipoGiro> TiposGiro => Set<TipoGiro>();
     public DbSet<ConfiguracionCuentasPorPagar> ConfiguracionesCuentasPorPagar => Set<ConfiguracionCuentasPorPagar>();
     public DbSet<Remision> Remisiones => Set<Remision>();
@@ -311,6 +320,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(l => l.Fecha).HasConversion(ConversorFechaUtc);
             e.Property(l => l.Total).HasPrecision(18, 2);
             e.HasIndex(l => l.Numero).IsUnique();
+            e.HasMany(l => l.Soportes).WithOne(s => s.LotePago).HasForeignKey(s => s.LotePagoId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<TipoGiro>(e =>
@@ -523,6 +533,73 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 .WithMany()
                 .HasForeignKey(n => n.UsuarioId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ---- Conciliación de facturas de proveedor vs OC de WO (2026-11-24) ----
+
+        modelBuilder.Entity<FacturaProveedor>(e =>
+        {
+            e.HasIndex(f => f.Cufe).IsUnique();
+            e.HasIndex(f => f.FechaEmision);
+            e.HasIndex(f => f.NitEmisor);
+            e.Property(f => f.Origen).HasDefaultValue(OrigenFactura.Correo);
+            e.Property(f => f.FechaRegistro).HasConversion(ConversorFechaUtc);
+            e.Property(f => f.CorreoFecha).HasConversion(ConversorFechaUtcNullable);
+        });
+
+        modelBuilder.Entity<FacturaProveedorRenglon>(e =>
+        {
+            e.HasOne(r => r.FacturaProveedor)
+                .WithMany(f => f.Renglones)
+                .HasForeignKey(r => r.FacturaProveedorId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<OrdenCompraWorldOffice>(e =>
+        {
+            e.HasIndex(o => o.IdAsientoContable).IsUnique();
+            e.HasIndex(o => o.Fecha);
+            e.HasIndex(o => o.NitProveedor);
+            e.HasIndex(o => o.Numero);
+            e.Property(o => o.FechaSincronizacion).HasConversion(ConversorFechaUtc);
+        });
+
+        modelBuilder.Entity<OrdenCompraWorldOfficeRenglon>(e =>
+        {
+            e.HasOne(r => r.OrdenCompraWorldOffice)
+                .WithMany(o => o.Renglones)
+                .HasForeignKey(r => r.OrdenCompraWorldOfficeId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<FacturaCompraWorldOffice>(e =>
+        {
+            e.HasIndex(f => f.IdAsientoContable).IsUnique();
+            e.HasIndex(f => f.Fecha);
+            e.HasIndex(f => f.NitProveedor);
+            e.Property(f => f.FechaSincronizacion).HasConversion(ConversorFechaUtc);
+        });
+
+        modelBuilder.Entity<ObservacionOrdenCompra>(e =>
+        {
+            e.HasIndex(o => o.IdAsientoContable);
+            e.Property(o => o.Fecha).HasConversion(ConversorFechaUtc);
+        });
+
+        modelBuilder.Entity<ObservacionFacturaProveedor>(e =>
+        {
+            e.HasIndex(o => o.FacturaProveedorId);
+            e.Property(o => o.Fecha).HasConversion(ConversorFechaUtc);
+            e.HasOne(o => o.FacturaProveedor)
+                .WithMany()
+                .HasForeignKey(o => o.FacturaProveedorId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<SincronizacionConciliacion>(e =>
+        {
+            e.Property(s => s.Id).ValueGeneratedNever();
+            e.Property(s => s.UltimaSincronizacionOrdenes).HasConversion(ConversorFechaUtcNullable);
         });
     }
 }

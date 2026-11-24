@@ -15,7 +15,7 @@ public class RolService(AppDbContext db) : IRolService
                 r.Id, r.Nombre, r.Descripcion, r.Activo,
                 r.PuedeDevolverCualquierDocumento, r.PuedeGestionarAlistamiento, r.PuedeVerAlistamiento, r.PuedeVerCuentasPorPagar, r.PuedePagarCuentas,
                 r.PuedeGestionarEntregas, r.PuedeVerEntregas, r.PuedeDocumentarEntregas, r.PuedeFacturarEntregas,
-                r.PuedeGestionarAlistamientoFerrealiados, r.PuedeVerAlistamientoFerrealiados))
+                r.PuedeGestionarAlistamientoFerrealiados, r.PuedeVerAlistamientoFerrealiados, r.PuedeConsultarPagos, r.PuedeVerConciliacion))
             .ToListAsync(ct);
 
     public async Task<RolDto> CrearAsync(CrearRolDto dto, CancellationToken ct = default)
@@ -38,7 +38,9 @@ public class RolService(AppDbContext db) : IRolService
             PuedeDocumentarEntregas = dto.PuedeDocumentarEntregas,
             PuedeFacturarEntregas = dto.PuedeFacturarEntregas,
             PuedeGestionarAlistamientoFerrealiados = dto.PuedeGestionarAlistamientoFerrealiados,
-            PuedeVerAlistamientoFerrealiados = dto.PuedeVerAlistamientoFerrealiados
+            PuedeVerAlistamientoFerrealiados = dto.PuedeVerAlistamientoFerrealiados,
+            PuedeConsultarPagos = dto.PuedeConsultarPagos,
+            PuedeVerConciliacion = dto.PuedeVerConciliacion
         };
         db.Roles.Add(rol);
         await db.SaveChangesAsync(ct);
@@ -68,6 +70,8 @@ public class RolService(AppDbContext db) : IRolService
         rol.PuedeFacturarEntregas = dto.PuedeFacturarEntregas;
         rol.PuedeGestionarAlistamientoFerrealiados = dto.PuedeGestionarAlistamientoFerrealiados;
         rol.PuedeVerAlistamientoFerrealiados = dto.PuedeVerAlistamientoFerrealiados;
+        rol.PuedeConsultarPagos = dto.PuedeConsultarPagos;
+        rol.PuedeVerConciliacion = dto.PuedeVerConciliacion;
         await db.SaveChangesAsync(ct);
 
         return MapearDto(rol);
@@ -77,5 +81,5 @@ public class RolService(AppDbContext db) : IRolService
         rol.Id, rol.Nombre, rol.Descripcion, rol.Activo,
         rol.PuedeDevolverCualquierDocumento, rol.PuedeGestionarAlistamiento, rol.PuedeVerAlistamiento, rol.PuedeVerCuentasPorPagar, rol.PuedePagarCuentas,
         rol.PuedeGestionarEntregas, rol.PuedeVerEntregas, rol.PuedeDocumentarEntregas, rol.PuedeFacturarEntregas,
-        rol.PuedeGestionarAlistamientoFerrealiados, rol.PuedeVerAlistamientoFerrealiados);
+        rol.PuedeGestionarAlistamientoFerrealiados, rol.PuedeVerAlistamientoFerrealiados, rol.PuedeConsultarPagos, rol.PuedeVerConciliacion);
 }
