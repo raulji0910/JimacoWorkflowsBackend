@@ -19,7 +19,8 @@ namespace Jimaco.Aprobaciones.Api.Controllers;
 [Route("api/[controller]")]
 [Authorize]
 public class SincronizacionController(IInstanciaDocumentoService instanciaService, IHojaAlistamientoService hojaAlistamientoService,
-    ICuentasPorPagarService cuentasPorPagarService, IConfiguracionCuentasPorPagarService configuracionCuentasPorPagarService) : ControllerBase, IActionFilter
+    ICuentasPorPagarService cuentasPorPagarService, IConfiguracionCuentasPorPagarService configuracionCuentasPorPagarService,
+    IConciliacionService conciliacionService) : ControllerBase, IActionFilter
 {
     /// <summary>
     /// Lo único que puede usar un Sincronizador que NO es el de Jimaco (2026-11-13): aprobaciones de OC
@@ -177,4 +178,28 @@ public class SincronizacionController(IInstanciaDocumentoService instanciaServic
         await cuentasPorPagarService.ReportarConflictoCreacionCEAsync(id, dto.Mensaje, ct);
         return Ok();
     }
+
+    // ---- Conciliación de facturas de proveedor (2026-11-24) — solo el Sincronizador de Jimaco ----
+    // (no está en PermitidosOtrasEmpresas: Ferrealiados tiene su propia conciliación en Cotizaciones).
+
+    /// <summary>XML sacados del correo de facturación (o de --carpeta). La API los interpreta y deduplica por CUFE.</summary>
+    [HttpPost("conciliacion/facturas")]
+    [RequestSizeLimit(50_000_000)]
+    public async Task<ActionResult<RegistroFacturasResultadoDto>> RegistrarFacturasConciliacion(
+        [FromBody] IReadOnlyList<FacturaXmlEntradaDto> facturas, CancellationToken ct) =>
+        Ok(await conciliacionService.RegistrarFacturasAsync(facturas, ct));
+
+    /// <summary>OC de WO con renglones (lotes de 200). Solo se reescribe lo que cambió.</summary>
+    [HttpPost("conciliacion/ordenes")]
+    [RequestSizeLimit(50_000_000)]
+    public async Task<ActionResult<SincronizacionOrdenesResultadoDto>> SincronizarOrdenesConciliacion(
+        [FromBody] IReadOnlyList<OrdenCompraEntradaDto> ordenes, CancellationToken ct) =>
+        Ok(await conciliacionService.SincronizarOrdenesAsync(ordenes, ct));
+
+    /// <summary>Encabezados de las FCJ de WO de la ventana (con la OC que cita Contabilidad en Personalizado1).</summary>
+    [HttpPost("conciliacion/facturas-compra")]
+    [RequestSizeLimit(50_000_000)]
+    public async Task<ActionResult<SincronizacionFacturasCompraResultadoDto>> SincronizarFacturasCompraConciliacion(
+        [FromBody] SincronizacionFacturasCompraEntradaDto entrada, CancellationToken ct) =>
+        Ok(await conciliacionService.SincronizarFacturasCompraAsync(entrada, ct));
 }

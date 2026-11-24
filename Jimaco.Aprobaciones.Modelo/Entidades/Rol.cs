@@ -80,6 +80,13 @@ public class Rol
     /// </summary>
     public bool PuedeConsultarPagos { get; set; }
 
+    /// <summary>
+    /// "Conciliador" (2026-11-24): menú Conciliación — cruce de las facturas electrónicas de los
+    /// proveedores (XML DIAN) contra las OC de World Office. Ve el cruce, carga ZIP de la DIAN,
+    /// descarga XML y escribe observaciones (OC sin factura, facturas parciales o con diferencia).
+    /// </summary>
+    public bool PuedeVerConciliacion { get; set; }
+
     public ICollection<UsuarioRol> UsuarioRoles { get; set; } = [];
     public ICollection<PasoFlujoRol> PasoFlujoRoles { get; set; } = [];
 }

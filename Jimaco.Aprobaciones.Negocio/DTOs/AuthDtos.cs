@@ -19,4 +19,6 @@ public record LoginResponseDto(string Token, string Nombre, string Email, IReadO
     bool PuedeGestionarAlistamientoFerrealiados = false,
     bool PuedeVerAlistamientoFerrealiados = false,
     // Consulta de pagos (contable, solo lectura) — ver Rol.PuedeConsultarPagos.
-    bool PuedeConsultarPagos = false);
+    bool PuedeConsultarPagos = false,
+    // Menú Conciliación (2026-11-24) — ver Rol.PuedeVerConciliacion.
+    bool PuedeVerConciliacion = false);

@@ -14,6 +14,12 @@ var config = new ConfigurationBuilder()
     .AddEnvironmentVariables()
     .Build();
 
+// ---- Modo conciliación (2026-11-24): instalación y Tarea Programada APARTE de la de aprobaciones ----
+// "Jimaco.Aprobaciones.Sincronizador.exe --conciliacion" solo sube OC, FCJ y los XML de
+// facturacion@ para la conciliación de facturas de proveedor; no toca nada de aprobaciones.
+if (args.Contains("--conciliacion"))
+    return await ConciliacionRunner.EjecutarAsync(config, args);
+
 var connectionStringWorldOffice = config["WorldOffice:ConnectionString"]
     ?? throw new InvalidOperationException("Falta configurar WorldOffice:ConnectionString.");
 var jimacoApiUrl = config["Jimaco:ApiBaseUrl"]
@@ -677,6 +683,7 @@ if (!(bool.TryParse(config["CuentasPorPagar:Activo"], out var cxpTercerosActivo)
 }
 
 Console.WriteLine($"[{DateTime.Now:s}] Listo.");
+return 0;
 
 // Texto libre escrito a mano ("16113", "COT16113"...) normalizado a la misma forma canónica que
 // usa el resto del Sincronizador para números de documento (sin ceros a la izquierda).

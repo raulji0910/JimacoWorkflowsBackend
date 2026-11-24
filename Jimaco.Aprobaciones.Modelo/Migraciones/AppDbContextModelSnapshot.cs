@@ -500,6 +500,59 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.ToTable("DocumentosVinculados");
                 });
 
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.FacturaCompraWorldOffice", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("Anulada")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("DocumentoExterno")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateOnly>("Fecha")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("FechaSincronizacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("IdAsientoContable")
+                        .HasColumnType("int");
+
+                    b.Property<string>("NitProveedor")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("NombreProveedor")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<int>("Numero")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ReferenciaOrdenes")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Fecha");
+
+                    b.HasIndex("IdAsientoContable")
+                        .IsUnique();
+
+                    b.HasIndex("NitProveedor");
+
+                    b.ToTable("FacturasCompraWorldOffice");
+                });
+
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.FacturaPagoProveedor", b =>
                 {
                     b.Property<int>("Id")
@@ -547,6 +600,132 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.HasIndex("InstanciaDocumentoId");
 
                     b.ToTable("FacturasPagoProveedor");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.FacturaProveedor", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("CorreoAsunto")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("CorreoFecha")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Cufe")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateOnly>("FechaEmision")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("FechaRegistro")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("Iva")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("NitEmisor")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("NitReceptor")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("NombreArchivo")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("NombreEmisor")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("Numero")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Origen")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("Correo");
+
+                    b.Property<string>("ReferenciaOrden")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<decimal>("Subtotal")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("TipoDocumento")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)");
+
+                    b.Property<decimal>("Total")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<byte[]>("XmlGzip")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Cufe")
+                        .IsUnique();
+
+                    b.HasIndex("FechaEmision");
+
+                    b.HasIndex("NitEmisor");
+
+                    b.ToTable("FacturasProveedor");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.FacturaProveedorRenglon", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Cantidad")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("Descripcion")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("FacturaProveedorId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Orden")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("PorcentajeIva")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<decimal>("Subtotal")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FacturaProveedorId");
+
+                    b.ToTable("FacturaProveedorRenglones");
                 });
 
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.HistorialAccion", b =>
@@ -844,6 +1023,179 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.HasIndex("UsuarioId");
 
                     b.ToTable("Notificaciones");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.ObservacionFacturaProveedor", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("FacturaProveedorId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("Fecha")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("NombreUsuario")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Texto")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<int>("Tipo")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UsuarioId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FacturaProveedorId");
+
+                    b.ToTable("ObservacionesFacturaProveedor");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.ObservacionOrdenCompra", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("Fecha")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("IdAsientoContable")
+                        .HasColumnType("int");
+
+                    b.Property<string>("NombreUsuario")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("NumeroOrden")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Texto")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<int>("Tipo")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UsuarioId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IdAsientoContable");
+
+                    b.ToTable("ObservacionesOrdenCompra");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.OrdenCompraWorldOffice", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("Anulada")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Emisor")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<DateOnly>("Fecha")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("FechaSincronizacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("IdAsientoContable")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Iva")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("NitProveedor")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("NombreProveedor")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<int>("Numero")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Subtotal")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Fecha");
+
+                    b.HasIndex("IdAsientoContable")
+                        .IsUnique();
+
+                    b.HasIndex("NitProveedor");
+
+                    b.HasIndex("Numero");
+
+                    b.ToTable("OrdenesCompraWorldOffice");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.OrdenCompraWorldOfficeRenglon", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Cantidad")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("Codigo")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Descripcion")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("Orden")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OrdenCompraWorldOfficeId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("PorcentajeIva")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<decimal>("ValorUnitario")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrdenCompraWorldOfficeId");
+
+                    b.ToTable("OrdenCompraWorldOfficeRenglones");
                 });
 
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.PagoProveedor", b =>
@@ -1332,6 +1684,9 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Property<bool>("PuedeVerAlistamientoFerrealiados")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("PuedeVerConciliacion")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("PuedeVerCuentasPorPagar")
                         .HasColumnType("bit");
 
@@ -1356,8 +1711,22 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                             PuedePagarCuentas = false,
                             PuedeVerAlistamiento = false,
                             PuedeVerAlistamientoFerrealiados = false,
+                            PuedeVerConciliacion = false,
                             PuedeVerCuentasPorPagar = false
                         });
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.SincronizacionConciliacion", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UltimaSincronizacionOrdenes")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("SincronizacionConciliacion");
                 });
 
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.SincronizacionCuentasPorPagar", b =>
@@ -2459,6 +2828,17 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Navigation("InstanciaDocumento");
                 });
 
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.FacturaProveedorRenglon", b =>
+                {
+                    b.HasOne("Jimaco.Aprobaciones.Modelo.Entidades.FacturaProveedor", "FacturaProveedor")
+                        .WithMany("Renglones")
+                        .HasForeignKey("FacturaProveedorId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("FacturaProveedor");
+                });
+
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.HistorialAccion", b =>
                 {
                     b.HasOne("Jimaco.Aprobaciones.Modelo.Entidades.InstanciaDocumento", "InstanciaDocumento")
@@ -2542,6 +2922,28 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Navigation("InstanciaDocumento");
 
                     b.Navigation("Usuario");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.ObservacionFacturaProveedor", b =>
+                {
+                    b.HasOne("Jimaco.Aprobaciones.Modelo.Entidades.FacturaProveedor", "FacturaProveedor")
+                        .WithMany()
+                        .HasForeignKey("FacturaProveedorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("FacturaProveedor");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.OrdenCompraWorldOfficeRenglon", b =>
+                {
+                    b.HasOne("Jimaco.Aprobaciones.Modelo.Entidades.OrdenCompraWorldOffice", "OrdenCompraWorldOffice")
+                        .WithMany("Renglones")
+                        .HasForeignKey("OrdenCompraWorldOfficeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("OrdenCompraWorldOffice");
                 });
 
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.PagoProveedor", b =>
@@ -2712,6 +3114,11 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Navigation("Renglones");
                 });
 
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.FacturaProveedor", b =>
+                {
+                    b.Navigation("Renglones");
+                });
+
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.InstanciaDocumento", b =>
                 {
                     b.Navigation("Adjuntos");
@@ -2736,6 +3143,11 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Navigation("Pagos");
 
                     b.Navigation("Soportes");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.OrdenCompraWorldOffice", b =>
+                {
+                    b.Navigation("Renglones");
                 });
 
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.PasoFlujo", b =>

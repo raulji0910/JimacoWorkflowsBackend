@@ -14,7 +14,7 @@ public class RolService(AppDbContext db) : IRolService
             .Select(r => new RolDto(
                 r.Id, r.Nombre, r.Descripcion, r.Activo,
                 r.PuedeDevolverCualquierDocumento, r.PuedeGestionarAlistamiento, r.PuedeVerAlistamiento, r.PuedeVerCuentasPorPagar, r.PuedePagarCuentas,
-                r.PuedeGestionarAlistamientoFerrealiados, r.PuedeVerAlistamientoFerrealiados, r.PuedeConsultarPagos))
+                r.PuedeGestionarAlistamientoFerrealiados, r.PuedeVerAlistamientoFerrealiados, r.PuedeConsultarPagos, r.PuedeVerConciliacion))
             .ToListAsync(ct);
 
     public async Task<RolDto> CrearAsync(CrearRolDto dto, CancellationToken ct = default)
@@ -34,7 +34,8 @@ public class RolService(AppDbContext db) : IRolService
             PuedePagarCuentas = dto.PuedePagarCuentas,
             PuedeGestionarAlistamientoFerrealiados = dto.PuedeGestionarAlistamientoFerrealiados,
             PuedeVerAlistamientoFerrealiados = dto.PuedeVerAlistamientoFerrealiados,
-            PuedeConsultarPagos = dto.PuedeConsultarPagos
+            PuedeConsultarPagos = dto.PuedeConsultarPagos,
+            PuedeVerConciliacion = dto.PuedeVerConciliacion
         };
         db.Roles.Add(rol);
         await db.SaveChangesAsync(ct);
@@ -61,6 +62,7 @@ public class RolService(AppDbContext db) : IRolService
         rol.PuedeGestionarAlistamientoFerrealiados = dto.PuedeGestionarAlistamientoFerrealiados;
         rol.PuedeVerAlistamientoFerrealiados = dto.PuedeVerAlistamientoFerrealiados;
         rol.PuedeConsultarPagos = dto.PuedeConsultarPagos;
+        rol.PuedeVerConciliacion = dto.PuedeVerConciliacion;
         await db.SaveChangesAsync(ct);
 
         return MapearDto(rol);
@@ -69,5 +71,5 @@ public class RolService(AppDbContext db) : IRolService
     private static RolDto MapearDto(Rol rol) => new(
         rol.Id, rol.Nombre, rol.Descripcion, rol.Activo,
         rol.PuedeDevolverCualquierDocumento, rol.PuedeGestionarAlistamiento, rol.PuedeVerAlistamiento, rol.PuedeVerCuentasPorPagar, rol.PuedePagarCuentas,
-        rol.PuedeGestionarAlistamientoFerrealiados, rol.PuedeVerAlistamientoFerrealiados, rol.PuedeConsultarPagos);
+        rol.PuedeGestionarAlistamientoFerrealiados, rol.PuedeVerAlistamientoFerrealiados, rol.PuedeConsultarPagos, rol.PuedeVerConciliacion);
 }
