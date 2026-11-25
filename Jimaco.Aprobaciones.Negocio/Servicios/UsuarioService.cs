@@ -36,6 +36,7 @@ public class UsuarioService(AppDbContext db) : IUsuarioService
             UsuarioWO = dto.UsuarioWO,
             UsuarioWOFerrealiados = string.IsNullOrWhiteSpace(dto.UsuarioWOFerrealiados) ? null : dto.UsuarioWOFerrealiados.Trim(),
             NombresCompletosWO = NormalizarNombresCompletosWO(dto.NombresCompletosWO),
+            IdTerceroWO = dto.IdTerceroWO is > 0 ? dto.IdTerceroWO : null,
             Activo = true
         };
         usuario.UsuarioRoles = roles.Select(r => new UsuarioRol { Usuario = usuario, RolId = r.Id }).ToList();
@@ -45,7 +46,7 @@ public class UsuarioService(AppDbContext db) : IUsuarioService
 
         return new UsuarioDto(usuario.Id, usuario.Nombre, usuario.Email, usuario.Telefono, usuario.UsuarioWO, usuario.Activo,
             roles.Select(r => new RolDto(r.Id, r.Nombre, r.Descripcion, r.Activo, r.PuedeDevolverCualquierDocumento, r.PuedeGestionarAlistamiento, r.PuedeVerAlistamiento, r.PuedeVerCuentasPorPagar)).ToList(),
-            usuario.NombresCompletosWO, usuario.UsuarioWOFerrealiados);
+            usuario.NombresCompletosWO, usuario.UsuarioWOFerrealiados, usuario.IdTerceroWO);
     }
 
     public async Task<UsuarioDto> ActualizarAsync(int id, ActualizarUsuarioDto dto, int usuarioQueEditaId, CancellationToken ct = default)
@@ -71,6 +72,7 @@ public class UsuarioService(AppDbContext db) : IUsuarioService
         usuario.UsuarioWO = dto.UsuarioWO;
         usuario.UsuarioWOFerrealiados = string.IsNullOrWhiteSpace(dto.UsuarioWOFerrealiados) ? null : dto.UsuarioWOFerrealiados.Trim();
         usuario.NombresCompletosWO = NormalizarNombresCompletosWO(dto.NombresCompletosWO);
+        usuario.IdTerceroWO = dto.IdTerceroWO is > 0 ? dto.IdTerceroWO : null;
         usuario.Activo = dto.Activo;
 
         db.UsuarioRoles.RemoveRange(usuario.UsuarioRoles);
@@ -80,7 +82,7 @@ public class UsuarioService(AppDbContext db) : IUsuarioService
 
         return new UsuarioDto(usuario.Id, usuario.Nombre, usuario.Email, usuario.Telefono, usuario.UsuarioWO, usuario.Activo,
             roles.Select(r => new RolDto(r.Id, r.Nombre, r.Descripcion, r.Activo, r.PuedeDevolverCualquierDocumento, r.PuedeGestionarAlistamiento, r.PuedeVerAlistamiento, r.PuedeVerCuentasPorPagar)).ToList(),
-            usuario.NombresCompletosWO, usuario.UsuarioWOFerrealiados);
+            usuario.NombresCompletosWO, usuario.UsuarioWOFerrealiados, usuario.IdTerceroWO);
     }
 
     /// <summary>Recorta cada nombre, descarta vacíos y repetidos, y los vuelve a unir con "; " — null si no queda ninguno.</summary>
@@ -117,5 +119,5 @@ public class UsuarioService(AppDbContext db) : IUsuarioService
     private static UsuarioDto MapearDto(Usuario u) => new(
         u.Id, u.Nombre, u.Email, u.Telefono, u.UsuarioWO, u.Activo,
         u.UsuarioRoles.Select(ur => new RolDto(ur.Rol.Id, ur.Rol.Nombre, ur.Rol.Descripcion, ur.Rol.Activo, ur.Rol.PuedeDevolverCualquierDocumento, ur.Rol.PuedeGestionarAlistamiento, ur.Rol.PuedeVerAlistamiento, ur.Rol.PuedeVerCuentasPorPagar)).ToList(),
-        u.NombresCompletosWO, u.UsuarioWOFerrealiados);
+        u.NombresCompletosWO, u.UsuarioWOFerrealiados, u.IdTerceroWO);
 }

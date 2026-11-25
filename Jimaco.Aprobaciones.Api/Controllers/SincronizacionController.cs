@@ -20,7 +20,7 @@ namespace Jimaco.Aprobaciones.Api.Controllers;
 [Authorize]
 public class SincronizacionController(IInstanciaDocumentoService instanciaService, IHojaAlistamientoService hojaAlistamientoService,
     ICuentasPorPagarService cuentasPorPagarService, IConfiguracionCuentasPorPagarService configuracionCuentasPorPagarService,
-    IConciliacionService conciliacionService, ICatalogoWOService catalogoWOService) : ControllerBase, IActionFilter
+    IConciliacionService conciliacionService, ICatalogoWOService catalogoWOService, ICotizacionService cotizacionService) : ControllerBase, IActionFilter
 {
     /// <summary>
     /// Lo único que puede usar un Sincronizador que NO es el de Jimaco (2026-11-13): aprobaciones de OC
@@ -228,6 +228,26 @@ public class SincronizacionController(IInstanciaDocumentoService instanciaServic
     public async Task<IActionResult> GuardarCatalogosWO([FromBody] CatalogosWOInputDto catalogos, CancellationToken ct)
     {
         await catalogoWOService.GuardarCatalogosAsync(catalogos, ct);
+        return Ok();
+    }
+
+    // ---- Cotizaciones del portal que hay que crear en WO (2026-11-25) — mismo "pedir y recoger" ----
+
+    [HttpGet("documentos-wo/cotizaciones-pendientes")]
+    public async Task<ActionResult<IReadOnlyList<PendienteCreacionCotizacionDto>>> ListarCotizacionesPendientes(CancellationToken ct) =>
+        Ok(await cotizacionService.ListarPendientesCreacionAsync(ct));
+
+    [HttpPost("documentos-wo/cotizaciones/{id:int}/creada")]
+    public async Task<IActionResult> ConfirmarCotizacionCreada(int id, CotizacionCreadaDto dto, CancellationToken ct)
+    {
+        await cotizacionService.ConfirmarCreadaAsync(id, dto, ct);
+        return Ok();
+    }
+
+    [HttpPost("documentos-wo/cotizaciones/{id:int}/error")]
+    public async Task<IActionResult> ReportarErrorCotizacion(int id, ReportarConflictoWODto dto, CancellationToken ct)
+    {
+        await cotizacionService.ReportarErrorAsync(id, dto.Mensaje, ct);
         return Ok();
     }
 }

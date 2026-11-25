@@ -47,6 +47,13 @@ public class Usuario
     [MaxLength(500)]
     public string? NombresCompletosWO { get; set; }
 
+    /// <summary>
+    /// Tercero de WO que va como "elaborado por" (<c>IdTerceroInterno</c>) en los documentos que esta
+    /// persona crea desde el portal (2026-11-25, ej. Laura = 9602). Junto con <see cref="UsuarioWO"/>,
+    /// es obligatorio para crear cotizaciones.
+    /// </summary>
+    public int? IdTerceroWO { get; set; }
+
     public bool Activo { get; set; } = true;
 
     public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;

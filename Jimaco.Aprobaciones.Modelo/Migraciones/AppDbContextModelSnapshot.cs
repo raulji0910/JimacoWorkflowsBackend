@@ -395,6 +395,171 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                         });
                 });
 
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.Cotizacion", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ClienteIdentificacion")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("ClienteNombre")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("Concepto")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("DireccionTexto")
+                        .HasMaxLength(400)
+                        .HasColumnType("nvarchar(400)");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("FechaActualizacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaCreacionWO")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateOnly?>("FechaDocumento")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime?>("FechaEnvio")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FormaPagoNombre")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int?>("IdAsientoContableWO")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdDireccionWO")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdFormaPagoWO")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdTerceroElaboraWO")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdTerceroWO")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Iva")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("MasDatosJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("MensajeError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<decimal?>("NumeroWO")
+                        .HasColumnType("decimal(18,0)");
+
+                    b.Property<string>("PrefijoWO")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<decimal>("Subtotal")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("Total")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("UsuarioId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UsuarioWO")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("VigenciaDias")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Estado");
+
+                    b.HasIndex("UsuarioId", "Estado");
+
+                    b.ToTable("Cotizaciones");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.CotizacionRenglon", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Cantidad")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("Codigo")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("CotizacionId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Descripcion")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("IdBodegaWO")
+                        .IsRequired()
+                        .HasMaxLength(15)
+                        .HasColumnType("nvarchar(15)");
+
+                    b.Property<int?>("IdClasificacion")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdInventarioWO")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Iva")
+                        .HasColumnType("decimal(9,6)");
+
+                    b.Property<string>("Nota")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("Orden")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UnidadMedida")
+                        .IsRequired()
+                        .HasMaxLength(15)
+                        .HasColumnType("nvarchar(15)");
+
+                    b.Property<decimal>("ValorUnitario")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CotizacionId");
+
+                    b.ToTable("CotizacionRenglones");
+                });
+
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.CuentaBancoWO", b =>
                 {
                     b.Property<int>("Id")
@@ -2873,6 +3038,9 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Property<DateTime>("FechaCreacion")
                         .HasColumnType("datetime2");
 
+                    b.Property<int?>("IdTerceroWO")
+                        .HasColumnType("int");
+
                     b.Property<string>("Nombre")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -2981,6 +3149,28 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                         .OnDelete(DeleteBehavior.NoAction);
 
                     b.Navigation("ActualizadoPorUsuario");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.Cotizacion", b =>
+                {
+                    b.HasOne("Jimaco.Aprobaciones.Modelo.Entidades.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Usuario");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.CotizacionRenglon", b =>
+                {
+                    b.HasOne("Jimaco.Aprobaciones.Modelo.Entidades.Cotizacion", "Cotizacion")
+                        .WithMany("Renglones")
+                        .HasForeignKey("CotizacionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Cotizacion");
                 });
 
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.DefinicionFlujo", b =>
@@ -3287,6 +3477,11 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                 });
 
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.ComprobanteEgreso", b =>
+                {
+                    b.Navigation("Renglones");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.Cotizacion", b =>
                 {
                     b.Navigation("Renglones");
                 });

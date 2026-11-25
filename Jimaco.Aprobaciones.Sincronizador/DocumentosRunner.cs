@@ -43,6 +43,10 @@ public static class DocumentosRunner
             return 1;
         }
 
+        // ---- Cotizaciones del portal → WO (primero: es lo que la vendedora está esperando) ----
+        if (!await CrearCotizacionesAsync(config, api, Log))
+            huboError = true;
+
         // ---- Productos (incremental) ----
         try
         {
@@ -95,6 +99,73 @@ public static class DocumentosRunner
         }
 
         return huboError ? 1 : 0;
+    }
+
+    /// <summary>
+    /// Crea en WO las cotizaciones enviadas desde el portal. Apagado salvo <c>Documentos:CrearCotizaciones</c>
+    /// = true y una <c>WorldOffice:ConnectionStringEscritura</c> (la misma que usa la creación de CE).
+    /// Devuelve false si hubo un error que no es de una cotización puntual (Api caída, WO sin conexión).
+    /// </summary>
+    private static async Task<bool> CrearCotizacionesAsync(IConfiguration config, JimacoAprobacionesClient api, Action<string> log)
+    {
+        if (!bool.TryParse(config["Documentos:CrearCotizaciones"], out var activo) || !activo) return true;
+        var conexionEscritura = config["WorldOffice:ConnectionStringEscritura"];
+        if (string.IsNullOrWhiteSpace(conexionEscritura))
+        {
+            log("Documentos:CrearCotizaciones=true pero falta WorldOffice:ConnectionStringEscritura — no se crean cotizaciones.");
+            return false;
+        }
+        var prefijo = config["Documentos:PrefijoCotizacion"];
+        if (string.IsNullOrWhiteSpace(prefijo))
+        {
+            log("Falta Documentos:PrefijoCotizacion (PRUEB en QA, COT en producción) — no se crean cotizaciones.");
+            return false;
+        }
+
+        try
+        {
+            var pendientes = await api.ListarCotizacionesPendientesAsync();
+            if (pendientes.Count == 0) return true;
+
+            var writer = new CotizacionWriter(conexionEscritura, new ConfiguracionCotizacion(
+                prefijo.Trim(),
+                string.IsNullOrWhiteSpace(config["Documentos:NomPc"]) ? "APROBACIONES" : config["Documentos:NomPc"]!.Trim(),
+                string.IsNullOrWhiteSpace(config["Documentos:ColumnaMarcaCotizacion"]) ? "Personalizado8" : config["Documentos:ColumnaMarcaCotizacion"]!.Trim()));
+            if (!await writer.PrefijoExisteAsync())
+            {
+                log($"El prefijo de cotización '{prefijo}' no tiene ninguna COT en World Office — revisar Documentos:PrefijoCotizacion. No se crea nada.");
+                return false;
+            }
+
+            foreach (var cotizacion in pendientes)
+            {
+                try
+                {
+                    var resultado = await writer.CrearAsync(cotizacion);
+                    if (resultado.Resultado == ResultadoCreacionCotizacion.Conflicto)
+                    {
+                        log($"  Cotización #{cotizacion.CotizacionId}: WO no la aceptó — {resultado.Mensaje}");
+                        await api.ReportarErrorCotizacionAsync(cotizacion.CotizacionId, resultado.Mensaje ?? "World Office no aceptó la cotización.");
+                        continue;
+                    }
+                    await api.ConfirmarCotizacionCreadaAsync(cotizacion.CotizacionId,
+                        new CotizacionCreadaDto(resultado.Prefijo!, resultado.Numero!.Value, resultado.IdAsientoContable!.Value));
+                    log($"  Cotización #{cotizacion.CotizacionId} -> {resultado.Prefijo} {resultado.Numero:0}" +
+                        (resultado.Resultado == ResultadoCreacionCotizacion.YaExistia ? " (ya estaba creada, se avisó a la Api)." : " creada en WO."));
+                }
+                catch (Exception ex)
+                {
+                    // Error técnico (conexión, permisos): se deja PorCrear y se reintenta en la próxima corrida.
+                    log($"  ERROR creando la cotización #{cotizacion.CotizacionId}: {ex.Message}");
+                }
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            log($"ERROR con las cotizaciones pendientes: {ex.Message}");
+            return false;
+        }
     }
 
     private static bool Vencio(DateTime? ultimaVez, int minutos) =>

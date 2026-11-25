@@ -324,6 +324,34 @@ public class JimacoAprobacionesClient(HttpClient http, string email, string pass
     public Task<int> EnviarExistenciasWOAsync(IReadOnlyList<ExistenciaWOInputDto> existencias, CancellationToken ct = default) =>
         PostarAsync<int>("api/sincronizacion/documentos-wo/existencias", existencias, ct);
 
+    public async Task<IReadOnlyList<PendienteCreacionCotizacionDto>> ListarCotizacionesPendientesAsync(CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/sincronizacion/documentos-wo/cotizaciones-pendientes");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<IReadOnlyList<PendienteCreacionCotizacionDto>>(JsonOpciones, ct))!;
+    }
+
+    public async Task ConfirmarCotizacionCreadaAsync(int cotizacionId, CotizacionCreadaDto dto, CancellationToken ct = default) =>
+        await EnviarSinRespuestaAsync($"api/sincronizacion/documentos-wo/cotizaciones/{cotizacionId}/creada", dto, ct);
+
+    public async Task ReportarErrorCotizacionAsync(int cotizacionId, string mensaje, CancellationToken ct = default) =>
+        await EnviarSinRespuestaAsync($"api/sincronizacion/documentos-wo/cotizaciones/{cotizacionId}/error", new ReportarConflictoWODto(mensaje), ct);
+
+    private async Task EnviarSinRespuestaAsync(string ruta, object cuerpo, CancellationToken ct)
+    {
+        await AsegurarTokenAsync(ct);
+        using var request = new HttpRequestMessage(HttpMethod.Post, ruta)
+        {
+            Content = JsonContent.Create(cuerpo, cuerpo.GetType(), options: JsonOpciones)
+        };
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+    }
+
     public async Task EnviarCatalogosWOAsync(CatalogosWOInputDto catalogos, CancellationToken ct = default)
     {
         await AsegurarTokenAsync(ct);

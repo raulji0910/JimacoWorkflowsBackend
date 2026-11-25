@@ -71,6 +71,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<FormaPagoWO> FormasPagoWO => Set<FormaPagoWO>();
     public DbSet<CampoPersonalizadoWO> CamposPersonalizadosWO => Set<CampoPersonalizadoWO>();
     public DbSet<SincronizacionCatalogoWO> SincronizacionCatalogoWO => Set<SincronizacionCatalogoWO>();
+    public DbSet<Cotizacion> Cotizaciones => Set<Cotizacion>();
+    public DbSet<CotizacionRenglon> CotizacionRenglones => Set<CotizacionRenglon>();
 
     /// <summary>Id fijo del rol sembrado en la migración inicial — útil para lógica de arranque (ver SeedAdminAsync en Program.cs).</summary>
     public const int RolAdminId = 1;
@@ -559,6 +561,18 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(s => s.FechaProductos).HasConversion(ConversorFechaUtcNullable);
             e.Property(s => s.FechaExistencias).HasConversion(ConversorFechaUtcNullable);
             e.Property(s => s.FechaCatalogos).HasConversion(ConversorFechaUtcNullable);
+        });
+
+        modelBuilder.Entity<Cotizacion>(e =>
+        {
+            e.HasIndex(c => new { c.UsuarioId, c.Estado });
+            e.HasIndex(c => c.Estado);
+            e.HasOne(c => c.Usuario).WithMany().HasForeignKey(c => c.UsuarioId).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(c => c.Renglones).WithOne(r => r.Cotizacion).HasForeignKey(r => r.CotizacionId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(c => c.FechaCreacion).HasConversion(ConversorFechaUtc);
+            e.Property(c => c.FechaActualizacion).HasConversion(ConversorFechaUtc);
+            e.Property(c => c.FechaEnvio).HasConversion(ConversorFechaUtcNullable);
+            e.Property(c => c.FechaCreacionWO).HasConversion(ConversorFechaUtcNullable);
         });
     }
 }
