@@ -16,7 +16,9 @@ public record RolDto(
     // Consulta de pagos, solo lectura + reporte por correo de cada lote (2026-11-23) — ver Rol.PuedeConsultarPagos.
     bool PuedeConsultarPagos = false,
     // Conciliación de facturas de proveedor vs OC (2026-11-24) — ver Rol.PuedeVerConciliacion.
-    bool PuedeVerConciliacion = false);
+    bool PuedeVerConciliacion = false,
+    // Cotizaciones creadas desde el portal en WO (2026-11-25) — ver Rol.PuedeCrearCotizaciones.
+    bool PuedeCrearCotizaciones = false);
 
 public record CrearRolDto(
     string Nombre,
@@ -32,7 +34,9 @@ public record CrearRolDto(
     // Consulta de pagos, solo lectura + reporte por correo de cada lote (2026-11-23) — ver Rol.PuedeConsultarPagos.
     bool PuedeConsultarPagos = false,
     // Conciliación de facturas de proveedor vs OC (2026-11-24) — ver Rol.PuedeVerConciliacion.
-    bool PuedeVerConciliacion = false);
+    bool PuedeVerConciliacion = false,
+    // Cotizaciones creadas desde el portal en WO (2026-11-25) — ver Rol.PuedeCrearCotizaciones.
+    bool PuedeCrearCotizaciones = false);
 
 public record ActualizarRolDto(
     string Nombre,
@@ -49,4 +53,6 @@ public record ActualizarRolDto(
     // Consulta de pagos, solo lectura + reporte por correo de cada lote (2026-11-23) — ver Rol.PuedeConsultarPagos.
     bool PuedeConsultarPagos = false,
     // Conciliación de facturas de proveedor vs OC (2026-11-24) — ver Rol.PuedeVerConciliacion.
-    bool PuedeVerConciliacion = false);
+    bool PuedeVerConciliacion = false,
+    // Cotizaciones creadas desde el portal en WO (2026-11-25) — ver Rol.PuedeCrearCotizaciones.
+    bool PuedeCrearCotizaciones = false);

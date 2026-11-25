@@ -21,4 +21,6 @@ public record LoginResponseDto(string Token, string Nombre, string Email, IReadO
     // Consulta de pagos (contable, solo lectura) — ver Rol.PuedeConsultarPagos.
     bool PuedeConsultarPagos = false,
     // Menú Conciliación (2026-11-24) — ver Rol.PuedeVerConciliacion.
-    bool PuedeVerConciliacion = false);
+    bool PuedeVerConciliacion = false,
+    // Menú Cotizaciones (2026-11-25) — ver Rol.PuedeCrearCotizaciones.
+    bool PuedeCrearCotizaciones = false);

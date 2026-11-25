@@ -163,6 +163,25 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.ToTable("AnticiposProveedor");
                 });
 
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.BodegaWO", b =>
+                {
+                    b.Property<string>("IdBodegaWO")
+                        .HasMaxLength(15)
+                        .HasColumnType("nvarchar(15)");
+
+                    b.Property<bool>("Activa")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("IdBodegaWO");
+
+                    b.ToTable("BodegasWO");
+                });
+
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.BorradorPagoProveedor", b =>
                 {
                     b.Property<int>("Id")
@@ -202,6 +221,38 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                         .IsUnique();
 
                     b.ToTable("BorradoresPagoProveedor");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.CampoPersonalizadoWO", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Etiqueta")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("Numero")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TipoDocumento")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TipoDocumento", "Numero")
+                        .IsUnique();
+
+                    b.ToTable("CamposPersonalizadosWO");
                 });
 
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.CampoTipoDocumento", b =>
@@ -417,6 +468,36 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.ToTable("DefinicionesFlujo");
                 });
 
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.DireccionTerceroWO", b =>
+                {
+                    b.Property<int>("IdDireccionWO")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Ciudad")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Direccion")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<int>("IdTerceroWO")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("Principal")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Telefonos")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("IdDireccionWO");
+
+                    b.HasIndex("IdTerceroWO");
+
+                    b.ToTable("DireccionesTerceroWO");
+                });
+
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.DocumentoVinculado", b =>
                 {
                     b.Property<int>("Id")
@@ -498,6 +579,23 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.HasIndex("Empresa", "PrefijoOrigen", "NumeroReferencia");
 
                     b.ToTable("DocumentosVinculados");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.ExistenciaWO", b =>
+                {
+                    b.Property<int>("IdInventarioWO")
+                        .HasColumnType("int");
+
+                    b.Property<string>("IdBodegaWO")
+                        .HasMaxLength(15)
+                        .HasColumnType("nvarchar(15)");
+
+                    b.Property<decimal>("Existencia")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.HasKey("IdInventarioWO", "IdBodegaWO");
+
+                    b.ToTable("ExistenciasWO");
                 });
 
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.FacturaCompraWorldOffice", b =>
@@ -726,6 +824,21 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.HasIndex("FacturaProveedorId");
 
                     b.ToTable("FacturaProveedorRenglones");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.FormaPagoWO", b =>
+                {
+                    b.Property<int>("IdFormaPagoWO")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("IdFormaPagoWO");
+
+                    b.ToTable("FormasPagoWO");
                 });
 
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.HistorialAccion", b =>
@@ -1435,6 +1548,51 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.ToTable("PasoFlujoRoles");
                 });
 
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.ProductoWO", b =>
+                {
+                    b.Property<int>("IdInventarioWO")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Codigo")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Descripcion")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("FechaActualizacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("IdClasificacion")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Iva")
+                        .HasColumnType("decimal(9,6)");
+
+                    b.Property<decimal>("Precio1")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("UnidadMedida")
+                        .IsRequired()
+                        .HasMaxLength(15)
+                        .HasColumnType("nvarchar(15)");
+
+                    b.Property<long>("VersionWO")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("IdInventarioWO");
+
+                    b.HasIndex("Codigo");
+
+                    b.ToTable("ProductosWO");
+                });
+
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.RelacionPago", b =>
                 {
                     b.Property<int>("Id")
@@ -1666,6 +1824,9 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                     b.Property<bool>("PuedeConsultarPagos")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("PuedeCrearCotizaciones")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("PuedeDevolverCualquierDocumento")
                         .HasColumnType("bit");
 
@@ -1705,6 +1866,7 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                             Descripcion = "Administra usuarios, roles, tipos de documento y flujos.",
                             Nombre = "Admin",
                             PuedeConsultarPagos = false,
+                            PuedeCrearCotizaciones = false,
                             PuedeDevolverCualquierDocumento = false,
                             PuedeGestionarAlistamiento = false,
                             PuedeGestionarAlistamientoFerrealiados = false,
@@ -1714,6 +1876,28 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                             PuedeVerConciliacion = false,
                             PuedeVerCuentasPorPagar = false
                         });
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.SincronizacionCatalogoWO", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("FechaCatalogos")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaExistencias")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaProductos")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long>("UltimaVersionProductos")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("SincronizacionCatalogoWO");
                 });
 
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.SincronizacionConciliacion", b =>

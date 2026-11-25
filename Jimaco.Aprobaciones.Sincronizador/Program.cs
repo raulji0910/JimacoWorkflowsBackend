@@ -20,6 +20,12 @@ var config = new ConfigurationBuilder()
 if (args.Contains("--conciliacion"))
     return await ConciliacionRunner.EjecutarAsync(config, args);
 
+// ---- Modo documentos (2026-11-25): Tarea Programada APARTE, cada minuto ----
+// "Jimaco.Aprobaciones.Sincronizador.exe --documentos" mantiene el catálogo de WO para crear
+// documentos desde el portal (y en la Fase 1 creará las cotizaciones en WO). Ver DocumentosRunner.
+if (args.Contains("--documentos"))
+    return await DocumentosRunner.EjecutarAsync(config, args);
+
 var connectionStringWorldOffice = config["WorldOffice:ConnectionString"]
     ?? throw new InvalidOperationException("Falta configurar WorldOffice:ConnectionString.");
 var jimacoApiUrl = config["Jimaco:ApiBaseUrl"]

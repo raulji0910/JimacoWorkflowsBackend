@@ -306,6 +306,36 @@ public class JimacoAprobacionesClient(HttpClient http, string email, string pass
     public Task<SincronizacionFacturasCompraResultadoDto> SincronizarFacturasCompraConciliacionAsync(SincronizacionFacturasCompraEntradaDto entrada, CancellationToken ct = default) =>
         PostarAsync<SincronizacionFacturasCompraResultadoDto>("api/sincronizacion/conciliacion/facturas-compra", entrada, ct);
 
+    // ---- Catálogo de WO para crear documentos desde el portal (2026-11-25, modo --documentos) ----
+
+    public async Task<EstadoCatalogoWODto> ObtenerEstadoCatalogoWOAsync(CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/sincronizacion/documentos-wo/estado-catalogo");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<EstadoCatalogoWODto>(JsonOpciones, ct))!;
+    }
+
+    public Task<int> EnviarProductosWOAsync(IReadOnlyList<ProductoWOInputDto> productos, CancellationToken ct = default) =>
+        PostarAsync<int>("api/sincronizacion/documentos-wo/productos", productos, ct);
+
+    public Task<int> EnviarExistenciasWOAsync(IReadOnlyList<ExistenciaWOInputDto> existencias, CancellationToken ct = default) =>
+        PostarAsync<int>("api/sincronizacion/documentos-wo/existencias", existencias, ct);
+
+    public async Task EnviarCatalogosWOAsync(CatalogosWOInputDto catalogos, CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "api/sincronizacion/documentos-wo/catalogos")
+        {
+            Content = JsonContent.Create(catalogos, options: JsonOpciones)
+        };
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+    }
+
     private async Task<T> PostarAsync<T>(string ruta, object cuerpo, CancellationToken ct)
     {
         await AsegurarTokenAsync(ct);

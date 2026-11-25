@@ -63,6 +63,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<AnticipoPagoProveedor> AnticiposPagoProveedor => Set<AnticipoPagoProveedor>();
     public DbSet<CuentaBancoWO> CuentasBancoWO => Set<CuentaBancoWO>();
     public DbSet<PagoProveedor> PagosProveedor => Set<PagoProveedor>();
+    // Catálogo de WO para crear documentos desde el portal (2026-11-25) — ver Entidades/CatalogoWO.cs.
+    public DbSet<ProductoWO> ProductosWO => Set<ProductoWO>();
+    public DbSet<BodegaWO> BodegasWO => Set<BodegaWO>();
+    public DbSet<ExistenciaWO> ExistenciasWO => Set<ExistenciaWO>();
+    public DbSet<DireccionTerceroWO> DireccionesTerceroWO => Set<DireccionTerceroWO>();
+    public DbSet<FormaPagoWO> FormasPagoWO => Set<FormaPagoWO>();
+    public DbSet<CampoPersonalizadoWO> CamposPersonalizadosWO => Set<CampoPersonalizadoWO>();
+    public DbSet<SincronizacionCatalogoWO> SincronizacionCatalogoWO => Set<SincronizacionCatalogoWO>();
 
     /// <summary>Id fijo del rol sembrado en la migración inicial — útil para lógica de arranque (ver SeedAdminAsync en Program.cs).</summary>
     public const int RolAdminId = 1;
@@ -527,6 +535,30 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             e.Property(s => s.Id).ValueGeneratedNever();
             e.Property(s => s.UltimaSincronizacionOrdenes).HasConversion(ConversorFechaUtcNullable);
+        });
+
+        // ---- Catálogo de WO (2026-11-25): espejo de lectura, las llaves son los Id de WO ----
+        modelBuilder.Entity<ProductoWO>(e =>
+        {
+            e.HasKey(p => p.IdInventarioWO);
+            e.HasIndex(p => p.Codigo);
+            e.Property(p => p.FechaActualizacion).HasConversion(ConversorFechaUtc);
+        });
+        modelBuilder.Entity<BodegaWO>(e => e.HasKey(b => b.IdBodegaWO));
+        modelBuilder.Entity<ExistenciaWO>(e => e.HasKey(x => new { x.IdInventarioWO, x.IdBodegaWO }));
+        modelBuilder.Entity<DireccionTerceroWO>(e =>
+        {
+            e.HasKey(d => d.IdDireccionWO);
+            e.HasIndex(d => d.IdTerceroWO);
+        });
+        modelBuilder.Entity<FormaPagoWO>(e => e.HasKey(f => f.IdFormaPagoWO));
+        modelBuilder.Entity<CampoPersonalizadoWO>(e => e.HasIndex(c => new { c.TipoDocumento, c.Numero }).IsUnique());
+        modelBuilder.Entity<SincronizacionCatalogoWO>(e =>
+        {
+            e.Property(s => s.Id).ValueGeneratedNever();
+            e.Property(s => s.FechaProductos).HasConversion(ConversorFechaUtcNullable);
+            e.Property(s => s.FechaExistencias).HasConversion(ConversorFechaUtcNullable);
+            e.Property(s => s.FechaCatalogos).HasConversion(ConversorFechaUtcNullable);
         });
     }
 }

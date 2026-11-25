@@ -273,6 +273,16 @@ inventados), incluidos los tres casos (escribir bien, ya aprobado, conflicto anu
 `WorldOfficeWriter` de verdad desde una máquina con alcance a la red de World Office, con el login
 `wf_aprobaciones_writer` ya creado ahí.
 
+## Creación de documentos en World Office desde el portal (2026-11-25, en desarrollo — rama `feature/documentos-wo`)
+
+Cotizaciones (Fase 1), OC desde la COT (Fase 2) y Remisiones (Fase 3) se arman en el portal y el Sincronizador las crea en WO, que asigna el número. Mismo patrón que `ComprobanteEgresoWriter` (número = MAX+1 por tipo+prefijo con UPDLOCK/HOLDLOCK dentro de la transacción, reintento si `TrgI_ValidaLlave` rechaza, renglones de a uno, marca anti-duplicado en Nota + NomPc "APROBACIONES").
+
+- **Modo `--documentos`** (`DocumentosRunner`): Tarea Programada APARTE cada minuto. Fase 0: sube el catálogo de WO (`WorldOfficeCatalogoReader` → `api/sincronizacion/documentos-wo/*` → `CatalogoWOService`): productos incrementales por `Inventarios.VersionCol` (rowversion), existencias de `Vista_ExistenciasPorBodegas` (vista de WO cifrada — la misma cifra que WO; foto cada 5 min), bodegas / direcciones de terceros / formas de pago / `Campos_Pers_Docum` (cada hora). Clientes = `TerceroWO` (lo sube el Sincronizador normal, Cuentas por pagar).
+- **Permiso:** `Rol.PuedeCrearCotizaciones` ("Crea cotizaciones"); portal consulta `api/catalogo-wo/*`.
+- **Esquema WO de una COT** (confirmado con COT 16915, IdAsientoContable 130001): encabezado en `[CuentasContables - Asientos]` (IdCuentaContableDocumento='COT', ~27 columnas con valor), renglones en `CCA_M_Inventarios` (IdBodegaInventario texto "Uno"=Principal, IdClasificación del producto, `Vencimiento` = fecha + vigencia elegida por el usuario, `Nota` por renglón, Cantidad_Conversion/Valor_Conversion/factores en 1), y **una fila en `TotalesDocumentos`** (ValorTotallocal = total; COT/OC/REM/FC/FV la tienen, los CE nunca).
+- **"Más Datos"** = `Personalizado1..15` (nvarchar 500) del encabezado; etiquetas en `Campos_Pers_Docum` (NumParte 1 encabezado, senUso -1 = en uso). La OC copia P1 ("INVENTARIO") y P2 (campo entrega) de su COT. Personalizados por renglón: sin uso.
+- Precios: casi ningún producto tiene lista de precios → el vendedor digita. Prefijo de prueba COT: `PRUEB`; OC no tiene prefijo de prueba (hay que crearlo en WO antes de la Fase 2).
+
 ## Production deployment (live, 2026-09-04)
 
 **https://aprobaciones.54-232-227-230.sslip.io** — same Lightsail box as Jimaco Cotizaciones and

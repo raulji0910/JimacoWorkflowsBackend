@@ -20,7 +20,7 @@ namespace Jimaco.Aprobaciones.Api.Controllers;
 [Authorize]
 public class SincronizacionController(IInstanciaDocumentoService instanciaService, IHojaAlistamientoService hojaAlistamientoService,
     ICuentasPorPagarService cuentasPorPagarService, IConfiguracionCuentasPorPagarService configuracionCuentasPorPagarService,
-    IConciliacionService conciliacionService) : ControllerBase, IActionFilter
+    IConciliacionService conciliacionService, ICatalogoWOService catalogoWOService) : ControllerBase, IActionFilter
 {
     /// <summary>
     /// Lo único que puede usar un Sincronizador que NO es el de Jimaco (2026-11-13): aprobaciones de OC
@@ -202,4 +202,32 @@ public class SincronizacionController(IInstanciaDocumentoService instanciaServic
     public async Task<ActionResult<SincronizacionFacturasCompraResultadoDto>> SincronizarFacturasCompraConciliacion(
         [FromBody] SincronizacionFacturasCompraEntradaDto entrada, CancellationToken ct) =>
         Ok(await conciliacionService.SincronizarFacturasCompraAsync(entrada, ct));
+
+    // ---- Catálogo de WO para crear documentos desde el portal (2026-11-25) — modo --documentos ----
+    // Solo Jimaco por ahora (no está en PermitidosOtrasEmpresas).
+
+    [HttpGet("documentos-wo/estado-catalogo")]
+    public async Task<ActionResult<EstadoCatalogoWODto>> EstadoCatalogoWO(CancellationToken ct) =>
+        Ok(await catalogoWOService.ObtenerEstadoAsync(ct));
+
+    /// <summary>Productos de Inventarios que cambiaron (por VersionCol), en lotes.</summary>
+    [HttpPost("documentos-wo/productos")]
+    [RequestSizeLimit(50_000_000)]
+    public async Task<ActionResult<int>> GuardarProductosWO([FromBody] IReadOnlyList<ProductoWOInputDto> productos, CancellationToken ct) =>
+        Ok(await catalogoWOService.GuardarProductosAsync(productos, ct));
+
+    /// <summary>Foto completa de Vista_ExistenciasPorBodegas: reemplaza la anterior.</summary>
+    [HttpPost("documentos-wo/existencias")]
+    [RequestSizeLimit(50_000_000)]
+    public async Task<ActionResult<int>> GuardarExistenciasWO([FromBody] IReadOnlyList<ExistenciaWOInputDto> existencias, CancellationToken ct) =>
+        Ok(await catalogoWOService.GuardarExistenciasAsync(existencias, ct));
+
+    /// <summary>Bodegas, direcciones de terceros, formas de pago y "Más Datos": foto completa.</summary>
+    [HttpPost("documentos-wo/catalogos")]
+    [RequestSizeLimit(50_000_000)]
+    public async Task<IActionResult> GuardarCatalogosWO([FromBody] CatalogosWOInputDto catalogos, CancellationToken ct)
+    {
+        await catalogoWOService.GuardarCatalogosAsync(catalogos, ct);
+        return Ok();
+    }
 }

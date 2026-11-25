@@ -87,6 +87,13 @@ public class Rol
     /// </summary>
     public bool PuedeVerConciliacion { get; set; }
 
+    /// <summary>
+    /// "Crea cotizaciones" (2026-11-25): menú Cotizaciones — arma la cotización en el portal y el
+    /// Sincronizador la crea en World Office (WO le asigna el número). Ver CLAUDE.md, "Creación de
+    /// documentos en World Office".
+    /// </summary>
+    public bool PuedeCrearCotizaciones { get; set; }
+
     public ICollection<UsuarioRol> UsuarioRoles { get; set; } = [];
     public ICollection<PasoFlujoRol> PasoFlujoRoles { get; set; } = [];
 }
