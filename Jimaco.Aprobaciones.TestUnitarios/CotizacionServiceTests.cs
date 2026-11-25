@@ -102,13 +102,13 @@ public class CotizacionServiceTests
     }
 
     [Fact]
-    public async Task MasDatos_SoloLosCamposEnUsoDeLaCOT()
+    public async Task MasDatos_UnCampoQueWODejoDeUsarSeDescartaSinError()
     {
         using var db = CrearContexto();
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            Servicio(db).CrearAsync(Cotizacion(new Dictionary<int, string> { [8] = "no se puede" }), Laura));
-        Assert.Contains("no está en uso", error.Message);
+        var cotizacion = await Servicio(db).CrearAsync(Cotizacion(new Dictionary<int, string> { [8] = "ya no se usa", [1] = "Andrea" }), Laura);
+
+        Assert.Equal("Andrea", Assert.Single(cotizacion.MasDatos).Value);
     }
 
     [Fact]

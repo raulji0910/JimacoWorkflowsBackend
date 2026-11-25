@@ -258,15 +258,15 @@ public class CotizacionService(AppDbContext db, TimeProvider reloj) : ICotizacio
         cotizacion.Concepto = string.IsNullOrWhiteSpace(dto.Concepto) ? ConceptoPorDefecto : Recortar(dto.Concepto.Trim(), 500);
         cotizacion.VigenciaDias = dto.VigenciaDias;
 
-        // "Más Datos": solo los campos en uso de la COT en WO.
+        // "Más Datos": solo los campos en uso de la COT en WO. Un campo que WO dejó de usar (el catálogo se
+        // refresca cada hora) se descarta sin error: la vendedora ya no lo ve en pantalla y no podría corregirlo.
         var camposActivos = await db.CamposPersonalizadosWO.AsNoTracking()
             .Where(c => c.TipoDocumento == TipoDocumentoWO && c.Activo).Select(c => c.Numero).ToListAsync(ct);
         var masDatos = new SortedDictionary<int, string>();
         foreach (var (numero, valor) in dto.MasDatos ?? new Dictionary<int, string>())
         {
             if (string.IsNullOrWhiteSpace(valor)) continue;
-            if (!camposActivos.Contains(numero))
-                throw new InvalidOperationException($"El campo {numero} de \"Más Datos\" no está en uso en las cotizaciones de World Office.");
+            if (!camposActivos.Contains(numero)) continue;
             masDatos[numero] = Recortar(valor.Trim(), LargoMaximoMasDatos);
         }
         cotizacion.MasDatosJson = masDatos.Count == 0 ? null : JsonSerializer.Serialize(masDatos);

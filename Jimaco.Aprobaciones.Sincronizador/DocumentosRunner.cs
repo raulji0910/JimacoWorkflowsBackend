@@ -9,7 +9,8 @@ namespace Jimaco.Aprobaciones.Sincronizador;
 /// frenarlo. Fase 0 (esta): mantiene al día en la Api el catálogo de WO que necesita el portal:
 ///  - productos: en cada corrida, solo los que cambiaron (VersionCol de Inventarios);
 ///  - existencias por bodega: foto completa cada <c>Documentos:MinutosExistencias</c> (5);
-///  - bodegas, direcciones de clientes, formas de pago y "Más Datos": cada <c>Documentos:MinutosCatalogos</c> (60).
+///  - clientes (terceros) cada <c>Documentos:MinutosClientes</c> (10) y bodegas, sucursales, formas de pago
+///    y "Más Datos" cada <c>Documentos:MinutosCatalogos</c> (10).
 /// Fase 1: además creará en WO las cotizaciones pendientes del portal.
 /// </summary>
 public static class DocumentosRunner
@@ -22,7 +23,10 @@ public static class DocumentosRunner
         void Log(string texto) => Console.WriteLine($"[{DateTime.Now:s}] {texto}");
 
         var minutosExistencias = int.TryParse(config["Documentos:MinutosExistencias"], out var me) ? me : 5;
-        var minutosCatalogos = int.TryParse(config["Documentos:MinutosCatalogos"], out var mc) ? mc : 60;
+        // Catálogos chicos (sucursales, formas de pago, Más Datos) y clientes: cada 10 minutos (2026-11-25:
+        // se crean clientes y sucursales en WO a cada rato y la vendedora los necesita para cotizar).
+        var minutosCatalogos = int.TryParse(config["Documentos:MinutosCatalogos"], out var mc) ? mc : 10;
+        var minutosClientes = int.TryParse(config["Documentos:MinutosClientes"], out var mcl) ? mcl : 10;
         // "--documentos --todo": manda todo ya, sin mirar cuándo fue la última vez (útil al instalar).
         var forzar = args.Contains("--todo");
 
@@ -81,7 +85,29 @@ public static class DocumentosRunner
             }
         }
 
-        // ---- Catálogos chicos (cada hora) ----
+        // ---- Clientes (Terceros de WO, foto completa) ----
+        // El mismo catálogo TerceroWO que manda el Sincronizador de aprobaciones cada pocas horas (Cuentas
+        // por pagar); acá se manda más seguido porque es la lista de clientes de la cotización.
+        try
+        {
+            var ultimaClientes = await api.ObtenerFechaCorteTercerosAsync();
+            if (forzar || Vencio(ultimaClientes, minutosClientes))
+            {
+                var terceros = await new WorldOfficeReader(Requerido("WorldOffice:ConnectionString")).ObtenerTercerosAsync();
+                await api.EnviarTercerosAsync(terceros
+                    .Where(t => !string.IsNullOrWhiteSpace(t.Identificacion))
+                    .Select(t => new TerceroWOInputDto(t.IdTercero, t.Identificacion!.Trim(), t.NombreCompleto.Trim()))
+                    .ToList());
+                Log($"Clientes: {terceros.Count} terceros de WO.");
+            }
+        }
+        catch (Exception ex)
+        {
+            huboError = true;
+            Log($"ERROR sincronizando clientes: {ex.Message}");
+        }
+
+        // ---- Catálogos chicos (sucursales, formas de pago, Más Datos) ----
         if (forzar || Vencio(estado.FechaCatalogos, minutosCatalogos))
         {
             try
