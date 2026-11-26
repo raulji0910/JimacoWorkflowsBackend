@@ -191,9 +191,23 @@ public class CotizacionServiceTests
         Assert.Equal(EstadoCotizacion.Creada, creada.Estado);
         Assert.Equal("PRUEB", creada.PrefijoWO);
         Assert.Equal(3m, creada.NumeroWO);
+        Assert.Equal(new DateOnly(2026, 11, 25), creada.FechaDocumento);
         Assert.Empty(await servicio.ListarPendientesCreacionAsync());
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() => servicio.ActualizarAsync(borrador.Id, Cotizacion(), Laura));
         Assert.Contains("PRUEB 3", error.Message);
+    }
+
+    [Fact]
+    public async Task Creada_LaFechaEsLaDelDiaEnQueWOLaCreo()
+    {
+        using var db = CrearContexto();
+        var servicio = Servicio(db);
+        var borrador = await servicio.CrearAsync(Cotizacion(), Laura);
+        await servicio.EnviarAsync(borrador.Id, Laura); // enviada el 25-nov
+
+        await servicio.ConfirmarCreadaAsync(borrador.Id, new CotizacionCreadaDto("PRUEB", 3, 130186, new DateTime(2026, 11, 26)));
+
+        Assert.Equal(new DateOnly(2026, 11, 26), (await servicio.ObtenerAsync(borrador.Id, Laura)).FechaDocumento);
     }
 
     [Fact]

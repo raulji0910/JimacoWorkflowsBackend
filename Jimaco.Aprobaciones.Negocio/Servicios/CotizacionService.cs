@@ -199,6 +199,7 @@ public class CotizacionService(AppDbContext db, TimeProvider reloj) : ICotizacio
         cotizacion.PrefijoWO = dto.Prefijo;
         cotizacion.NumeroWO = dto.Numero;
         cotizacion.IdAsientoContableWO = dto.IdAsientoContable;
+        if (dto.Fecha is { } fechaWO) cotizacion.FechaDocumento = DateOnly.FromDateTime(fechaWO);
         cotizacion.FechaCreacionWO = ahora;
         cotizacion.MensajeError = null;
         cotizacion.FechaActualizacion = ahora;

@@ -19,7 +19,7 @@ public record ConfiguracionCotizacion(
 public enum ResultadoCreacionCotizacion { Creada, YaExistia, Conflicto }
 
 public record CreacionCotizacionResultado(ResultadoCreacionCotizacion Resultado, string? Prefijo = null, decimal? Numero = null,
-    int? IdAsientoContable = null, string? Mensaje = null)
+    int? IdAsientoContable = null, string? Mensaje = null, DateTime? Fecha = null)
 {
     public static CreacionCotizacionResultado ConConflicto(string mensaje) => new(ResultadoCreacionCotizacion.Conflicto, Mensaje: mensaje);
 }
@@ -83,16 +83,21 @@ public class CotizacionWriter(string connectionString, ConfiguracionCotizacion c
         await using var conexion = new SqlConnection(connectionString);
         await conexion.OpenAsync(ct);
         var marca = Marca(cot.CotizacionId);
+        // Fecha del documento = el día en que WO la crea (decisión 2026-11-26), no el día en que se envió
+        // desde el portal: así nunca queda una cotización con fecha pasada si el Sincronizador estuvo parado.
+        // El servidor de WO está en hora de Colombia.
+        var fecha = DateTime.Today;
 
         // 1. ¿Ya se creó en una corrida anterior (y falló el aviso a la Api)? Se busca por la marca.
         var existente = await conexion.QueryFirstOrDefaultAsync<ExistenteRow>(new CommandDefinition($"""
-            SELECT TOP 1 IdAsientoContable, prefijo AS Prefijo, DocumentoNúmero AS DocumentoNumero
+            SELECT TOP 1 IdAsientoContable, prefijo AS Prefijo, DocumentoNúmero AS DocumentoNumero, Fecha
             FROM [CuentasContables - Asientos]
             WHERE IdEmpresa = 1 AND IdCuentaContableDocumento = @Tipo AND NomPc = @NomPc AND {config.ColumnaMarca} = @Marca
             ORDER BY IdAsientoContable DESC;
             """, new { Tipo = TipoDocumento, config.NomPc, Marca = marca }, cancellationToken: ct));
         if (existente is not null)
-            return new CreacionCotizacionResultado(ResultadoCreacionCotizacion.YaExistia, existente.Prefijo, existente.DocumentoNumero, existente.IdAsientoContable);
+            return new CreacionCotizacionResultado(ResultadoCreacionCotizacion.YaExistia, existente.Prefijo, existente.DocumentoNumero, existente.IdAsientoContable,
+                Fecha: existente.Fecha);
 
         if (cot.Renglones.Count == 0)
             return CreacionCotizacionResultado.ConConflicto("La cotización no tiene productos.");
@@ -175,7 +180,7 @@ public class CotizacionWriter(string connectionString, ConfiguracionCotizacion c
 
         var parametros = new DynamicParameters(new
         {
-            Tipo = TipoDocumento, config.Prefijo, Numero = numero, Fecha = cot.Fecha.Date, IdTercero = cot.IdTercero,
+            Tipo = TipoDocumento, config.Prefijo, Numero = numero, Fecha = fecha, IdTercero = cot.IdTercero,
             IdDireccion = idDireccion, IdElabora = cot.IdTerceroElabora, Nota = Recortar(cot.Concepto, largoNota),
             IdFormaPago = cot.IdFormaPago, config.NomPc, Usuario = Recortar(cot.UsuarioWO, largoUsuario)
         });
@@ -199,7 +204,7 @@ public class CotizacionWriter(string connectionString, ConfiguracionCotizacion c
             """, parametros, tx, cancellationToken: ct));
 
         // 6. Renglones, de a uno. Vencimiento = fecha + vigencia (así lo deja WO).
-        var vencimiento = cot.Fecha.Date.AddDays(cot.VigenciaDias);
+        var vencimiento = fecha.AddDays(cot.VigenciaDias);
         foreach (var r in cot.Renglones)
         {
             await conexion.ExecuteAsync(new CommandDefinition("""
@@ -245,7 +250,7 @@ public class CotizacionWriter(string connectionString, ConfiguracionCotizacion c
             return await Abortar(tx, $"Los renglones grabados no cuadran ({grabado.Renglones} de {cot.Renglones.Count}). No se grabó nada.", ct);
 
         await tx.CommitAsync(ct);
-        return new CreacionCotizacionResultado(ResultadoCreacionCotizacion.Creada, config.Prefijo, numero, idAsiento);
+        return new CreacionCotizacionResultado(ResultadoCreacionCotizacion.Creada, config.Prefijo, numero, idAsiento, Fecha: fecha);
     }
 
     private static async Task<CreacionCotizacionResultado> Abortar(SqlTransaction tx, string mensaje, CancellationToken ct)
@@ -274,6 +279,7 @@ public class CotizacionWriter(string connectionString, ConfiguracionCotizacion c
         public int IdAsientoContable { get; set; }
         public string? Prefijo { get; set; }
         public decimal DocumentoNumero { get; set; }
+        public DateTime Fecha { get; set; }
     }
 
     private sealed class ProductoRow

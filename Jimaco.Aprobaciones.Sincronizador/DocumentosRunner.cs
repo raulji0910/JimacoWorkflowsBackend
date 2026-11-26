@@ -189,7 +189,7 @@ public static class DocumentosRunner
                         continue;
                     }
                     await api.ConfirmarCotizacionCreadaAsync(cotizacion.CotizacionId,
-                        new CotizacionCreadaDto(resultado.Prefijo!, resultado.Numero!.Value, resultado.IdAsientoContable!.Value));
+                        new CotizacionCreadaDto(resultado.Prefijo!, resultado.Numero!.Value, resultado.IdAsientoContable!.Value, resultado.Fecha));
                     log($"  Cotización #{cotizacion.CotizacionId} -> {resultado.Prefijo} {resultado.Numero:0}" +
                         (resultado.Resultado == ResultadoCreacionCotizacion.YaExistia ? " (ya estaba creada, se avisó a la Api)." : " creada en WO."));
                 }

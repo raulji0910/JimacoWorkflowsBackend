@@ -80,4 +80,5 @@ public record PendienteCreacionCotizacionDto(
     decimal Total,
     IReadOnlyList<RenglonCreacionCotizacionDto> Renglones);
 
-public record CotizacionCreadaDto(string Prefijo, decimal Numero, int IdAsientoContable);
+/// <param name="Fecha">Fecha con la que quedó en WO (el día en que se creó, decisión 2026-11-26).</param>
+public record CotizacionCreadaDto(string Prefijo, decimal Numero, int IdAsientoContable, DateTime? Fecha = null);
