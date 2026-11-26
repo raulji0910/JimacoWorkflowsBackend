@@ -72,6 +72,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<CampoPersonalizadoWO> CamposPersonalizadosWO => Set<CampoPersonalizadoWO>();
     public DbSet<SincronizacionCatalogoWO> SincronizacionCatalogoWO => Set<SincronizacionCatalogoWO>();
     public DbSet<Cotizacion> Cotizaciones => Set<Cotizacion>();
+    public DbSet<ConfiguracionDocumentosWO> ConfiguracionesDocumentosWO => Set<ConfiguracionDocumentosWO>();
     public DbSet<CotizacionRenglon> CotizacionRenglones => Set<CotizacionRenglon>();
 
     /// <summary>Id fijo del rol sembrado en la migración inicial — útil para lógica de arranque (ver SeedAdminAsync en Program.cs).</summary>
@@ -561,6 +562,21 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(s => s.FechaProductos).HasConversion(ConversorFechaUtcNullable);
             e.Property(s => s.FechaExistencias).HasConversion(ConversorFechaUtcNullable);
             e.Property(s => s.FechaCatalogos).HasConversion(ConversorFechaUtcNullable);
+        });
+
+        modelBuilder.Entity<ConfiguracionDocumentosWO>(e =>
+        {
+            e.Property(c => c.Id).ValueGeneratedNever();
+            e.Property(c => c.FechaActualizacion).HasConversion(ConversorFechaUtcNullable);
+            e.HasOne(c => c.ActualizadoPorUsuario).WithMany().HasForeignKey(c => c.ActualizadoPorUsuarioId)
+                .OnDelete(DeleteBehavior.NoAction);
+            // Arranca APAGADA y con el prefijo de prueba: producción pone COT y la enciende desde la página.
+            e.HasData(new ConfiguracionDocumentosWO
+            {
+                Id = ConfiguracionDocumentosWO.IdUnico,
+                PrefijoCotizacion = ConfiguracionDocumentosWO.PrefijoCotizacionPorDefecto,
+                CrearCotizacionesEnWorldOffice = false
+            });
         });
 
         modelBuilder.Entity<Cotizacion>(e =>

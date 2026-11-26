@@ -14,9 +14,21 @@ namespace Jimaco.Aprobaciones.Api.Controllers;
 [ApiController]
 [Route("api/catalogo-wo")]
 [Authorize]
-public class CatalogoWOController(ICatalogoWOService catalogoWOService) : ControllerBase
+public class CatalogoWOController(ICatalogoWOService catalogoWOService, IConfiguracionDocumentosWOService configuracionService) : ControllerBase
 {
     private int UsuarioActualId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+    // ---- Configuración (2026-11-26): prefijo de la cotización y "crear en WO" — solo administradores. ----
+
+    [HttpGet("configuracion")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<ConfiguracionDocumentosWODto>> Configuracion(CancellationToken ct) =>
+        Ok(await configuracionService.ObtenerAsync(ct));
+
+    [HttpPut("configuracion")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<ConfiguracionDocumentosWODto>> ActualizarConfiguracion(ActualizarConfiguracionDocumentosWODto dto, CancellationToken ct) =>
+        Ok(await configuracionService.ActualizarAsync(dto, UsuarioActualId, ct));
 
     [HttpGet("cotizacion")]
     public async Task<ActionResult<CatalogoCotizacionDto>> CatalogoCotizacion(CancellationToken ct) =>

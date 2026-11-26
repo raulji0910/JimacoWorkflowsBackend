@@ -395,6 +395,40 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                         });
                 });
 
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.ConfiguracionDocumentosWO", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ActualizadoPorUsuarioId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("CrearCotizacionesEnWorldOffice")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("FechaActualizacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PrefijoCotizacion")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActualizadoPorUsuarioId");
+
+                    b.ToTable("ConfiguracionesDocumentosWO");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            CrearCotizacionesEnWorldOffice = false,
+                            PrefijoCotizacion = "PRUEB"
+                        });
+                });
+
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.Cotizacion", b =>
                 {
                     b.Property<int>("Id")
@@ -3142,6 +3176,16 @@ namespace Jimaco.Aprobaciones.Modelo.Migraciones
                 });
 
             modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.ConfiguracionCuentasPorPagar", b =>
+                {
+                    b.HasOne("Jimaco.Aprobaciones.Modelo.Entidades.Usuario", "ActualizadoPorUsuario")
+                        .WithMany()
+                        .HasForeignKey("ActualizadoPorUsuarioId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.Navigation("ActualizadoPorUsuario");
+                });
+
+            modelBuilder.Entity("Jimaco.Aprobaciones.Modelo.Entidades.ConfiguracionDocumentosWO", b =>
                 {
                     b.HasOne("Jimaco.Aprobaciones.Modelo.Entidades.Usuario", "ActualizadoPorUsuario")
                         .WithMany()

@@ -20,7 +20,8 @@ namespace Jimaco.Aprobaciones.Api.Controllers;
 [Authorize]
 public class SincronizacionController(IInstanciaDocumentoService instanciaService, IHojaAlistamientoService hojaAlistamientoService,
     ICuentasPorPagarService cuentasPorPagarService, IConfiguracionCuentasPorPagarService configuracionCuentasPorPagarService,
-    IConciliacionService conciliacionService, ICatalogoWOService catalogoWOService, ICotizacionService cotizacionService) : ControllerBase, IActionFilter
+    IConciliacionService conciliacionService, ICatalogoWOService catalogoWOService, ICotizacionService cotizacionService,
+    IConfiguracionDocumentosWOService configuracionDocumentosWOService) : ControllerBase, IActionFilter
 {
     /// <summary>
     /// Lo único que puede usar un Sincronizador que NO es el de Jimaco (2026-11-13): aprobaciones de OC
@@ -232,6 +233,11 @@ public class SincronizacionController(IInstanciaDocumentoService instanciaServic
     }
 
     // ---- Cotizaciones del portal que hay que crear en WO (2026-11-25) — mismo "pedir y recoger" ----
+
+    // Prefijo y si se crean o no (2026-11-26) — lo maneja un administrador desde la página.
+    [HttpGet("documentos-wo/configuracion")]
+    public async Task<ActionResult<ConfiguracionDocumentosWODto>> ConfiguracionDocumentosWO(CancellationToken ct) =>
+        Ok(await configuracionDocumentosWOService.ObtenerAsync(ct));
 
     [HttpGet("documentos-wo/cotizaciones-pendientes")]
     public async Task<ActionResult<IReadOnlyList<PendienteCreacionCotizacionDto>>> ListarCotizacionesPendientes(CancellationToken ct) =>

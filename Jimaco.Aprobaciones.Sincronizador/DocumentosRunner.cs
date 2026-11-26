@@ -134,19 +134,33 @@ public static class DocumentosRunner
     /// </summary>
     private static async Task<bool> CrearCotizacionesAsync(IConfiguration config, JimacoAprobacionesClient api, Action<string> log)
     {
-        if (!bool.TryParse(config["Documentos:CrearCotizaciones"], out var activo) || !activo) return true;
+        // Freno de emergencia LOCAL: Documentos:CrearCotizaciones=false apaga la creación aunque en la página
+        // esté encendida. Ausente = la decide la página (Administración → Config. de cotizaciones).
+        if (bool.TryParse(config["Documentos:CrearCotizaciones"], out var activoLocal) && !activoLocal) return true;
         var conexionEscritura = config["WorldOffice:ConnectionStringEscritura"];
+
+        ConfiguracionDocumentosWODto configuracion;
+        try
+        {
+            configuracion = await api.ObtenerConfiguracionDocumentosWOAsync();
+        }
+        catch (Exception ex)
+        {
+            log($"ERROR leyendo la configuración de cotizaciones de la Api: {ex.Message}");
+            return false;
+        }
+        if (!configuracion.CrearCotizacionesEnWorldOffice)
+        {
+            if (configuracion.CotizacionesEnCola > 0)
+                log($"Hay {configuracion.CotizacionesEnCola} cotización(es) esperando, pero la creación en WO está APAGADA en la página (Administración → Config. de cotizaciones).");
+            return true;
+        }
         if (string.IsNullOrWhiteSpace(conexionEscritura))
         {
-            log("Documentos:CrearCotizaciones=true pero falta WorldOffice:ConnectionStringEscritura — no se crean cotizaciones.");
+            log("La creación de cotizaciones está encendida en la página pero falta WorldOffice:ConnectionStringEscritura — no se crean cotizaciones.");
             return false;
         }
-        var prefijo = config["Documentos:PrefijoCotizacion"];
-        if (string.IsNullOrWhiteSpace(prefijo))
-        {
-            log("Falta Documentos:PrefijoCotizacion (PRUEB en QA, COT en producción) — no se crean cotizaciones.");
-            return false;
-        }
+        var prefijo = configuracion.PrefijoCotizacion;
 
         try
         {
@@ -159,7 +173,7 @@ public static class DocumentosRunner
                 string.IsNullOrWhiteSpace(config["Documentos:ColumnaMarcaCotizacion"]) ? "Personalizado8" : config["Documentos:ColumnaMarcaCotizacion"]!.Trim()));
             if (!await writer.PrefijoExisteAsync())
             {
-                log($"El prefijo de cotización '{prefijo}' no tiene ninguna COT en World Office — revisar Documentos:PrefijoCotizacion. No se crea nada.");
+                log($"El prefijo de cotización '{prefijo}' no tiene ninguna COT en World Office — revisar el prefijo en Administración → Config. de cotizaciones. No se crea nada.");
                 return false;
             }
 

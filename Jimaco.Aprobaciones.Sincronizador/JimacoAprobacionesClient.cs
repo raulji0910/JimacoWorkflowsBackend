@@ -324,6 +324,16 @@ public class JimacoAprobacionesClient(HttpClient http, string email, string pass
     public Task<int> EnviarExistenciasWOAsync(IReadOnlyList<ExistenciaWOInputDto> existencias, CancellationToken ct = default) =>
         PostarAsync<int>("api/sincronizacion/documentos-wo/existencias", existencias, ct);
 
+    public async Task<ConfiguracionDocumentosWODto> ObtenerConfiguracionDocumentosWOAsync(CancellationToken ct = default)
+    {
+        await AsegurarTokenAsync(ct);
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/sincronizacion/documentos-wo/configuracion");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+        using var response = await http.SendAsync(request, ct);
+        await LanzarSiErrorAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<ConfiguracionDocumentosWODto>(JsonOpciones, ct))!;
+    }
+
     public async Task<IReadOnlyList<PendienteCreacionCotizacionDto>> ListarCotizacionesPendientesAsync(CancellationToken ct = default)
     {
         await AsegurarTokenAsync(ct);
