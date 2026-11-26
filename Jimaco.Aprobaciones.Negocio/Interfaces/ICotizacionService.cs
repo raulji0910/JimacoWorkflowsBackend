@@ -13,6 +13,8 @@ public interface ICotizacionService
     Task EliminarAsync(int id, int usuarioId, CancellationToken ct = default);
     Task<CotizacionDto> EnviarAsync(int id, int usuarioId, CancellationToken ct = default);
     Task<CotizacionDto> CopiarAsync(int id, int usuarioId, CancellationToken ct = default);
+    /// <summary>PDF con el formato de impresión de WO; nombre de archivo sugerido.</summary>
+    Task<(byte[] Pdf, string NombreArchivo)> GenerarPdfAsync(int id, int usuarioId, CancellationToken ct = default);
 
     // Sincronizador (modo --documentos).
     Task<IReadOnlyList<PendienteCreacionCotizacionDto>> ListarPendientesCreacionAsync(CancellationToken ct = default);

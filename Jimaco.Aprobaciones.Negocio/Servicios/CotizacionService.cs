@@ -156,6 +156,42 @@ public class CotizacionService(AppDbContext db, TimeProvider reloj) : ICotizacio
         return await ObtenerAsync(copia.Id, usuarioId, ct);
     }
 
+    /// <summary>
+    /// La cotización con el formato de "Imprimir Cotización" de WO. Sirve también en borrador (sale
+    /// como "BORRADOR"), para revisarla antes de enviarla. Contacto = Más Datos 1, observaciones = Más
+    /// Datos 2, "Tiem. Entrega" = nota del renglón, vendedor = el tercero "elaborado por".
+    /// </summary>
+    public async Task<(byte[] Pdf, string NombreArchivo)> GenerarPdfAsync(int id, int usuarioId, CancellationToken ct = default)
+    {
+        await ExigirPermisoAsync(usuarioId, ct);
+        var c = await CargarPropiaAsync(id, usuarioId, ct);
+
+        var idVendedor = c.IdTerceroElaboraWO ?? c.Usuario.IdTerceroWO;
+        var vendedor = idVendedor is null ? null
+            : await db.TercerosWO.AsNoTracking().Where(t => t.IdTerceroWO == idVendedor).Select(t => t.Nombre).FirstOrDefaultAsync(ct);
+        var masDatos = LeerMasDatos(c.MasDatosJson);
+        var creada = c.NumeroWO is not null;
+        var fecha = c.FechaDocumento ?? ConciliacionService.HoyColombia(reloj);
+
+        var impresion = new CotizacionImpresionDto(
+            creada ? c.PrefijoWO ?? "" : "BORRADOR",
+            creada ? c.NumeroWO!.Value.ToString("0") : $"#{c.Id}",
+            c.ClienteNombre ?? "",
+            CotizacionPdfGenerador.NitConDigito(c.ClienteIdentificacion),
+            fecha.ToString("dd/MM/yyyy"),
+            masDatos.GetValueOrDefault(1),
+            vendedor ?? c.Usuario.Nombre,
+            c.FormaPagoNombre,
+            masDatos.GetValueOrDefault(2),
+            c.Subtotal, 0m, c.Iva, c.Total,
+            c.Renglones.OrderBy(r => r.Orden).Select(r => new CotizacionImpresionRenglonDto(
+                r.Orden, r.Descripcion, r.Nota, r.Cantidad, r.UnidadMedida, r.ValorUnitario, r.Iva,
+                TotalesWO.Renglon(r.Cantidad, r.ValorUnitario, r.Iva).Subtotal)).ToList());
+
+        var nombre = creada ? $"Cotizacion {c.PrefijoWO} {c.NumeroWO:0}.pdf" : $"Cotizacion borrador {c.Id}.pdf";
+        return (CotizacionPdfGenerador.Generar(impresion), nombre);
+    }
+
     // ---------------- Sincronizador ----------------
 
     public async Task<IReadOnlyList<PendienteCreacionCotizacionDto>> ListarPendientesCreacionAsync(CancellationToken ct = default)

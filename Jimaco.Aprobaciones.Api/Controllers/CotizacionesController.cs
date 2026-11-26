@@ -45,6 +45,15 @@ public class CotizacionesController(ICotizacionService cotizacionService) : Cont
     public async Task<ActionResult<CotizacionDto>> Enviar(int id, CancellationToken ct) =>
         Ok(await cotizacionService.EnviarAsync(id, UsuarioActualId, ct));
 
+    /// <summary>PDF con el formato de "Imprimir Cotización" de WO (inline: se ve en el navegador).</summary>
+    [HttpGet("{id:int}/pdf")]
+    public async Task<IActionResult> Pdf(int id, CancellationToken ct)
+    {
+        var (pdf, nombre) = await cotizacionService.GenerarPdfAsync(id, UsuarioActualId, ct);
+        Response.Headers.ContentDisposition = new System.Net.Mime.ContentDisposition { FileName = nombre, Inline = true }.ToString();
+        return File(pdf, "application/pdf");
+    }
+
     [HttpPost("{id:int}/copiar")]
     public async Task<ActionResult<CotizacionDto>> Copiar(int id, CancellationToken ct) =>
         Ok(await cotizacionService.CopiarAsync(id, UsuarioActualId, ct));

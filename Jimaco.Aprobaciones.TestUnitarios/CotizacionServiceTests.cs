@@ -261,6 +261,52 @@ public class CotizacionServiceTests
         Assert.Equal(2, copia.Renglones.Count);
     }
 
+    [Theory]
+    [InlineData("901115366", "901115366 3")] // VENTUS, como lo imprime WO
+    [InlineData("901342748", "901342748 6")] // FERREALIADOS JV: 901.342.748-6
+    [InlineData("80123456", "80123456")]     // cédula: sin dígito
+    public void NitConDigito_ComoLoImprimeWO(string identificacion, string esperado) =>
+        Assert.Equal(esperado, CotizacionPdfGenerador.NitConDigito(identificacion));
+
+    [Fact]
+    public async Task Pdf_SaleEnBorradorYConElNumeroDeWOCuandoSeCrea()
+    {
+        QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+        using var db = CrearContexto();
+        db.TercerosWO.Add(new TerceroWO { IdTerceroWO = 9602, Identificacion = "1", Nombre = "LAURA SOFIA HERNANDEZ CARO" });
+        await db.SaveChangesAsync();
+        var servicio = Servicio(db);
+        var c = await servicio.CrearAsync(Cotizacion(new Dictionary<int, string> { [2] = "MALAMBO" }), Laura);
+
+        var (borrador, nombreBorrador) = await servicio.GenerarPdfAsync(c.Id, Laura);
+        await servicio.EnviarAsync(c.Id, Laura);
+        await servicio.ConfirmarCreadaAsync(c.Id, new CotizacionCreadaDto("PRUEB", 5, 1));
+        var (creada, nombreCreada) = await servicio.GenerarPdfAsync(c.Id, Laura);
+
+        Assert.StartsWith("%PDF", System.Text.Encoding.ASCII.GetString(borrador, 0, 4));
+        Assert.Equal($"Cotizacion borrador {c.Id}.pdf", nombreBorrador);
+        Assert.Equal("Cotizacion PRUEB 5.pdf", nombreCreada);
+        Assert.True(creada.Length > 1000);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => servicio.GenerarPdfAsync(c.Id, Yazmin));
+    }
+
+    [Theory]
+    [InlineData(25, 160)] // el máximo de "una página" con descripciones largas: no debe romperse si pasa de página
+    [InlineData(60, 40)]  // cotización larga: varias páginas
+    public void Pdf_CotizacionesLargasPasanDePagina(int renglones, int largoDescripcion)
+    {
+        QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+        var impresion = new CotizacionImpresionDto("COT", "15634", "PAREX RESOURCES COLOMBIA LTD SUCURSAL", "900123456 8", "27/08/2026",
+            null, "MARIA DEL PILAR JIMENEZ ROJAS", "Credito", "BOGOTA",
+            1_000_000m, 0m, 190_000m, 1_190_000m,
+            Enumerable.Range(1, renglones).Select(i => new CotizacionImpresionRenglonDto(i, new string('X', largoDescripcion) + $" {i}",
+                "PAQUETE X 12 UND", 5, "Und.", 12_500m, 0.19m, 62_500m)).ToList());
+
+        var pdf = CotizacionPdfGenerador.Generar(impresion);
+
+        Assert.StartsWith("%PDF", System.Text.Encoding.ASCII.GetString(pdf, 0, 4));
+    }
+
     [Fact]
     public async Task SoloSeBorranBorradores()
     {

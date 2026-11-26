@@ -82,3 +82,24 @@ public record PendienteCreacionCotizacionDto(
 
 /// <param name="Fecha">Fecha con la que quedó en WO (el día en que se creó, decisión 2026-11-26).</param>
 public record CotizacionCreadaDto(string Prefijo, decimal Numero, int IdAsientoContable, DateTime? Fecha = null);
+
+// ---- Impresión (PDF calcado de "Imprimir Cotización" de WO, 2026-11-26) ----
+
+public record CotizacionImpresionRenglonDto(int Item, string Descripcion, string? TiempoEntrega, decimal Cantidad, string Unidad,
+    decimal ValorUnitario, decimal Iva, decimal Total);
+
+public record CotizacionImpresionDto(
+    string Prefijo,
+    string Numero,
+    string Cliente,
+    string Nit,
+    string FechaDocumento,
+    string? Contacto,
+    string? Vendedor,
+    string? FormaPago,
+    string? Observaciones,
+    decimal Subtotal,
+    decimal Descuento,
+    decimal Iva,
+    decimal Total,
+    IReadOnlyList<CotizacionImpresionRenglonDto> Renglones);
