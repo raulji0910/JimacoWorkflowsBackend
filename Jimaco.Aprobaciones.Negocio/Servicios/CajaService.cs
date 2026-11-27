@@ -103,16 +103,23 @@ public partial class CajaService(
             ?? throw new KeyNotFoundException("No se encontró el paso.");
         if (paso.DefinicionFlujo.TipoDocumento.Empresa != caja.Empresa)
             throw new InvalidOperationException($"Ese paso es de un flujo de {paso.DefinicionFlujo.TipoDocumento.Empresa.Nombre()}.");
+        if (!paso.DefinicionFlujo.Activo || paso.DefinicionFlujo.FormaDePagoRequerida != FormaPagoContado)
+            throw new InvalidOperationException("Solo se pueden marcar pasos de flujos activos de contado.");
         paso.RequiereGiroCajaAlAprobar = dto.RequiereGiroCaja;
         await GuardarAsync(ct);
         return (await ListarPasosPagoAsync(cajaId, usuarioId, ct)).First(p => p.PasoId == pasoId);
     }
 
-    /// <summary>Pasos de los flujos activos de OC de la empresa (tipo de documento con prefijo OC en WO).</summary>
+    /// <summary>
+    /// Pasos de los flujos activos DE CONTADO de la empresa: el efectivo de la caja solo paga OC de contado.
+    /// (No se filtra por el prefijo "OC": en QA la Orden de Compra usa un prefijo de prueba.)
+    /// </summary>
     private IQueryable<PasoFlujo> PasosDeLaEmpresa(Empresa empresa) =>
         db.PasosFlujo.AsNoTracking()
             .Where(p => p.DefinicionFlujo.Activo && p.DefinicionFlujo.TipoDocumento.Empresa == empresa
-                        && p.DefinicionFlujo.TipoDocumento.PrefijoWorldOffice == "OC");
+                        && p.DefinicionFlujo.FormaDePagoRequerida == FormaPagoContado);
+
+    private const string FormaPagoContado = "Contado";
 
     // ================= Conceptos =================
 

@@ -54,7 +54,7 @@ public class CajaServiceTests
     {
         var tipo = db.TiposDocumento.FirstOrDefault(t => t.Empresa == empresa && t.PrefijoWorldOffice == "OC")
                    ?? db.TiposDocumento.Add(new TipoDocumento { Nombre = $"Orden de Compra {empresa}", PrefijoWorldOffice = "OC", Empresa = empresa }).Entity;
-        var flujo = new DefinicionFlujo { Nombre = "OC Contado hasta $300.000", TipoDocumento = tipo, Activo = true };
+        var flujo = new DefinicionFlujo { Nombre = "OC Contado hasta $300.000", TipoDocumento = tipo, Activo = true, FormaDePagoRequerida = "Contado" };
         var comercial = new PasoFlujo { Nombre = "Aprobacion comercial", Orden = 1, DefinicionFlujo = flujo };
         var asistente = new PasoFlujo { Nombre = "Entrega Asistente Gerencia", Orden = 2, DefinicionFlujo = flujo, RequiereGiroCajaAlAprobar = true };
         var transporte = new PasoFlujo { Nombre = "Recogida Transporte", Orden = 3, DefinicionFlujo = flujo };
