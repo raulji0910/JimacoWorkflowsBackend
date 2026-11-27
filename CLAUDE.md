@@ -182,7 +182,7 @@ below.
 
 **Deploying it** (this runs on a machine that is not a dev box and may not have the .NET runtime):
 ```bash
-dotnet publish Jimaco.Aprobaciones.Sincronizador -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish/sincronizador
+dotnet publish Jimaco.Aprobaciones.Sincronizador -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish/sincronizador
 ```
 Copy the `publish/sincronizador` folder to the target machine, edit `appsettings.Local.json` there
 with real values (never paste real credentials into a chat/PR — same rule as the `.env` SMTP
