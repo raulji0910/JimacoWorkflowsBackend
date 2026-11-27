@@ -88,14 +88,17 @@ public class ComprobanteEgresoWriter(string connectionString, ConfiguracionCE co
         await using var conexion = new SqlConnection(connectionString);
         await conexion.OpenAsync(ct);
 
-        // 1. ¿Ya se creó en una corrida anterior (y falló el aviso a la Api)? Se busca por la marca.
+        // 1. ¿Ya se creó en una corrida anterior (y falló el aviso a la Api)? Se busca por la marca Y EL PREFIJO:
+        // QA (CEJ-2) y producción (CEJ) escriben en la misma base de WO y sus Id se pueden repetir — sin el
+        // prefijo, un pago de producción podía quedar confirmado con un CE de prueba de QA (mismo caso que
+        // la cotización #2 del 2026-11-27).
         var existente = await conexion.QueryFirstOrDefaultAsync<CeExistenteRow>(new CommandDefinition("""
             SELECT TOP 1 IdAsientoContable, prefijo AS Prefijo, DocumentoNúmero AS DocumentoNumero
             FROM [CuentasContables - Asientos]
-            WHERE IdCuentaContableDocumento = 'ce' AND (senAnulado = 0 OR senAnulado IS NULL)
+            WHERE IdCuentaContableDocumento = 'ce' AND prefijo = @Prefijo AND (senAnulado = 0 OR senAnulado IS NULL)
               AND NomPc = @NomPc AND Nota LIKE @Marca
             ORDER BY IdAsientoContable DESC;
-            """, new { config.NomPc, Marca = "%" + Marca(pago.InstanciaDocumentoId) + "%" }, cancellationToken: ct));
+            """, new { config.Prefijo, config.NomPc, Marca = "%" + Marca(pago.InstanciaDocumentoId) + "%" }, cancellationToken: ct));
         if (existente is not null)
             return new CreacionCEResultado(ResultadoCreacionCE.YaExistia, existente.Prefijo, existente.DocumentoNumero, existente.IdAsientoContable);
 

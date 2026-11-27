@@ -88,13 +88,18 @@ public class CotizacionWriter(string connectionString, ConfiguracionCotizacion c
         // El servidor de WO está en hora de Colombia.
         var fecha = DateTime.Today;
 
-        // 1. ¿Ya se creó en una corrida anterior (y falló el aviso a la Api)? Se busca por la marca.
+        // 1. ¿Ya se creó en una corrida anterior (y falló el aviso a la Api)? Se busca por la marca Y EL PREFIJO:
+        // QA y producción escriben en la MISMA base de WO y sus Id de cotización se repiten (QA #2 y prod #2
+        // llevan la misma marca "APROBACIONES #2"). Sin el prefijo, la cotización #2 de producción (COT) se
+        // "encontró" en la PRUEB 4 de QA y quedó confirmada con ese número (caso real 2026-11-27).
+        // QA siempre usa un prefijo de prueba (PRUEB) y producción COT, así que nunca se cruzan.
         var existente = await conexion.QueryFirstOrDefaultAsync<ExistenteRow>(new CommandDefinition($"""
             SELECT TOP 1 IdAsientoContable, prefijo AS Prefijo, DocumentoNúmero AS DocumentoNumero, Fecha
             FROM [CuentasContables - Asientos]
-            WHERE IdEmpresa = 1 AND IdCuentaContableDocumento = @Tipo AND NomPc = @NomPc AND {config.ColumnaMarca} = @Marca
+            WHERE IdEmpresa = 1 AND IdCuentaContableDocumento = @Tipo AND prefijo = @Prefijo
+              AND NomPc = @NomPc AND {config.ColumnaMarca} = @Marca
             ORDER BY IdAsientoContable DESC;
-            """, new { Tipo = TipoDocumento, config.NomPc, Marca = marca }, cancellationToken: ct));
+            """, new { Tipo = TipoDocumento, config.Prefijo, config.NomPc, Marca = marca }, cancellationToken: ct));
         if (existente is not null)
             return new CreacionCotizacionResultado(ResultadoCreacionCotizacion.YaExistia, existente.Prefijo, existente.DocumentoNumero, existente.IdAsientoContable,
                 Fecha: existente.Fecha);
