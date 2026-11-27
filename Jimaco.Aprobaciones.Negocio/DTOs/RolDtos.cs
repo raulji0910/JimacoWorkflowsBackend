@@ -18,7 +18,12 @@ public record RolDto(
     // Conciliación de facturas de proveedor vs OC (2026-11-24) — ver Rol.PuedeVerConciliacion.
     bool PuedeVerConciliacion = false,
     // Cotizaciones creadas desde el portal en WO (2026-11-25) — ver Rol.PuedeCrearCotizaciones.
-    bool PuedeCrearCotizaciones = false);
+    bool PuedeCrearCotizaciones = false,
+    // Cajas menores (2026-11-27) — administrador y girador, una caja por empresa. Ver Rol.PuedeAdministrarCajaJimaco.
+    bool PuedeAdministrarCajaJimaco = false,
+    bool PuedeGirarCajaJimaco = false,
+    bool PuedeAdministrarCajaFerrealiados = false,
+    bool PuedeGirarCajaFerrealiados = false);
 
 public record CrearRolDto(
     string Nombre,
@@ -36,7 +41,12 @@ public record CrearRolDto(
     // Conciliación de facturas de proveedor vs OC (2026-11-24) — ver Rol.PuedeVerConciliacion.
     bool PuedeVerConciliacion = false,
     // Cotizaciones creadas desde el portal en WO (2026-11-25) — ver Rol.PuedeCrearCotizaciones.
-    bool PuedeCrearCotizaciones = false);
+    bool PuedeCrearCotizaciones = false,
+    // Cajas menores (2026-11-27) — administrador y girador, una caja por empresa. Ver Rol.PuedeAdministrarCajaJimaco.
+    bool PuedeAdministrarCajaJimaco = false,
+    bool PuedeGirarCajaJimaco = false,
+    bool PuedeAdministrarCajaFerrealiados = false,
+    bool PuedeGirarCajaFerrealiados = false);
 
 public record ActualizarRolDto(
     string Nombre,
@@ -55,4 +65,9 @@ public record ActualizarRolDto(
     // Conciliación de facturas de proveedor vs OC (2026-11-24) — ver Rol.PuedeVerConciliacion.
     bool PuedeVerConciliacion = false,
     // Cotizaciones creadas desde el portal en WO (2026-11-25) — ver Rol.PuedeCrearCotizaciones.
-    bool PuedeCrearCotizaciones = false);
+    bool PuedeCrearCotizaciones = false,
+    // Cajas menores (2026-11-27) — administrador y girador, una caja por empresa. Ver Rol.PuedeAdministrarCajaJimaco.
+    bool PuedeAdministrarCajaJimaco = false,
+    bool PuedeGirarCajaJimaco = false,
+    bool PuedeAdministrarCajaFerrealiados = false,
+    bool PuedeGirarCajaFerrealiados = false);

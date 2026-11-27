@@ -28,9 +28,10 @@ public class AuthService(AppDbContext db, IJwtGenerador jwtGenerador) : IAuthSer
         var puedeConsultarPagos = rolesActivos.Any(r => r.PuedeConsultarPagos);
         var puedeVerConciliacion = rolesActivos.Any(r => r.PuedeVerConciliacion);
         var puedeCrearCotizaciones = rolesActivos.Any(r => r.PuedeCrearCotizaciones);
+        var puedeVerCajas = rolesActivos.Any(r => r.PuedeAdministrarCajaJimaco || r.PuedeGirarCajaJimaco || r.PuedeAdministrarCajaFerrealiados || r.PuedeGirarCajaFerrealiados);
         var token = jwtGenerador.GenerarToken(usuario, roles);
         return new LoginResponseDto(token, usuario.Nombre, usuario.Email, roles, puedeDevolverCualquierDocumento,
             puedeGestionarAlistamiento, puedeVerAlistamiento, puedeVerCuentasPorPagar, puedePagarCuentas,
-            puedeGestionarAlistamientoFerrealiados, puedeVerAlistamientoFerrealiados, puedeConsultarPagos, puedeVerConciliacion, puedeCrearCotizaciones);
+            puedeGestionarAlistamientoFerrealiados, puedeVerAlistamientoFerrealiados, puedeConsultarPagos, puedeVerConciliacion, puedeCrearCotizaciones, puedeVerCajas);
     }
 }

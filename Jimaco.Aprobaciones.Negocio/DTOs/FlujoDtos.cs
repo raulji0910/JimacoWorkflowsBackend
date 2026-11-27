@@ -21,7 +21,9 @@ public record PasoFlujoDto(
     // Si "Aprobar" acá exige adjuntar un PDF con el soporte del pago (ej. Gerencia General al
     // hacer la transferencia) — ver PasoFlujo.RequiereSoportePagoAlAprobar.
     bool RequiereSoportePagoAlAprobar,
-    IReadOnlyList<int> RolesIds);
+    IReadOnlyList<int> RolesIds,
+    // Cajas menores (2026-11-27): "Aprobar" exige que la OC tenga giro de la caja menor — ver PasoFlujo.RequiereGiroCajaAlAprobar.
+    bool RequiereGiroCajaAlAprobar = false);
 
 public record PasoFlujoInputDto(
     string Nombre,
@@ -37,7 +39,8 @@ public record PasoFlujoInputDto(
     // POSTERIOR (Orden mayor) del mismo flujo, nunca uno anterior.
     int? RedirigirAPagoContadoOrden,
     bool RequiereSoportePagoAlAprobar,
-    IReadOnlyList<int> RolesIds);
+    IReadOnlyList<int> RolesIds,
+    bool RequiereGiroCajaAlAprobar = false);
 
 public record DefinicionFlujoDto(
     int Id,

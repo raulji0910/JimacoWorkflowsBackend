@@ -94,6 +94,18 @@ public class Rol
     /// </summary>
     public bool PuedeCrearCotizaciones { get; set; }
 
+    /// <summary>
+    /// Cajas menores (2026-11-27): "Administrador de caja" — tope, saldo mínimo, conceptos, recargas,
+    /// arqueos/ajustes y anulaciones, además de todo lo del girador. Uno por empresa (cada empresa
+    /// tiene su caja). Ver <see cref="Caja"/>.
+    /// </summary>
+    public bool PuedeAdministrarCajaJimaco { get; set; }
+    public bool PuedeAdministrarCajaFerrealiados { get; set; }
+
+    /// <summary>"Girador": entrega el efectivo (giros), legaliza, recibe vueltas y paga reintegros.</summary>
+    public bool PuedeGirarCajaJimaco { get; set; }
+    public bool PuedeGirarCajaFerrealiados { get; set; }
+
     public ICollection<UsuarioRol> UsuarioRoles { get; set; } = [];
     public ICollection<PasoFlujoRol> PasoFlujoRoles { get; set; } = [];
 }

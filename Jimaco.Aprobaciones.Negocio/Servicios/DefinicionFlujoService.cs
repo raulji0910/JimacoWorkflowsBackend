@@ -88,6 +88,7 @@ public class DefinicionFlujoService(AppDbContext db) : IDefinicionFlujoService
                 RequiereComprobanteEgresoAlAprobar = p.RequiereComprobanteEgresoAlAprobar,
                 RequiereComentarioAlAprobar = p.RequiereComentarioAlAprobar,
                 RequiereSoportePagoAlAprobar = p.RequiereSoportePagoAlAprobar,
+                RequiereGiroCajaAlAprobar = p.RequiereGiroCajaAlAprobar,
                 PasoFlujoRoles = p.RolesIds.Select(rid => new PasoFlujoRol { RolId = rid }).ToList()
                 // PasoRedirigirAPagoContadoId se resuelve más abajo, por Orden — igual que
                 // DestinosDevolucionOrdenes, no existe el Id todavía en esta primera pasada.
@@ -194,6 +195,6 @@ public class DefinicionFlujoService(AppDbContext db) : IDefinicionFlujoService
             p.Id, p.Nombre, p.Orden, p.PermiteDevolver, p.PermiteRechazar, p.PermiteDevolverAlEmisor,
             p.DestinosDevolucion.Select(d => d.PasoFlujoDestinoId).ToList(), p.RequiereComprobanteEgresoAlAprobar,
             p.RequiereComentarioAlAprobar, p.PasoRedirigirAPagoContadoId, p.RequiereSoportePagoAlAprobar,
-            p.PasoFlujoRoles.Select(pr => pr.RolId).ToList())).ToList(),
+            p.PasoFlujoRoles.Select(pr => pr.RolId).ToList(), p.RequiereGiroCajaAlAprobar)).ToList(),
         f.AprobacionAutomaticaAlLlegar);
 }

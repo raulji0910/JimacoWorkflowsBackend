@@ -411,6 +411,13 @@ public class InstanciaDocumentoService(
                 if (paso.RequiereComentarioAlAprobar && string.IsNullOrWhiteSpace(dto.Comentario))
                     throw new InvalidOperationException("Este paso exige un comentario para aprobar.");
 
+                // Cajas menores (2026-11-27): la OC de contado se paga con un giro de la caja menor de
+                // su empresa — sin giro vigente no se aprueba (ninguna OC en efectivo por fuera de la caja).
+                if (paso.RequiereGiroCajaAlAprobar && !await db.GirosCajaOrdenesCompra.AnyAsync(
+                        o => o.InstanciaDocumentoId == instancia.Id && o.GiroCaja.Estado != EstadoGiroCaja.Anulado, ct))
+                    throw new InvalidOperationException(
+                        "Esta OC se paga con la caja menor: antes de aprobar, registrá el giro en Cajas (Nuevo giro → elegí esta OC).");
+
                 if (paso.RequiereSoportePagoAlAprobar && !pagoSinSalidaDePlata)
                 {
                     if (dto.SoportePagoAdjuntoId is not int soporteId)
@@ -1432,5 +1439,6 @@ public class InstanciaDocumentoService(
             i.SoportePagoAdjunto.TamanoBytes, i.SoportePagoAdjunto.FechaCarga),
         MapearPagoProveedor(i),
         EsConfirmacionPagoProveedor(i, i.PasoActual),
-        i.Empresa.Nombre());
+        i.Empresa.Nombre(),
+        i.PasoActual?.RequiereGiroCajaAlAprobar ?? false);
 }

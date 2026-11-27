@@ -74,6 +74,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Cotizacion> Cotizaciones => Set<Cotizacion>();
     public DbSet<ConfiguracionDocumentosWO> ConfiguracionesDocumentosWO => Set<ConfiguracionDocumentosWO>();
     public DbSet<CotizacionRenglon> CotizacionRenglones => Set<CotizacionRenglon>();
+    public DbSet<Caja> Cajas => Set<Caja>();
+    public DbSet<ConceptoCaja> ConceptosCaja => Set<ConceptoCaja>();
+    public DbSet<BeneficiarioCaja> BeneficiariosCaja => Set<BeneficiarioCaja>();
+    public DbSet<MovimientoCaja> MovimientosCaja => Set<MovimientoCaja>();
+    public DbSet<GiroCaja> GirosCaja => Set<GiroCaja>();
+    public DbSet<GiroCajaOrdenCompra> GirosCajaOrdenesCompra => Set<GiroCajaOrdenCompra>();
 
     /// <summary>Id fijo del rol sembrado en la migración inicial — útil para lógica de arranque (ver SeedAdminAsync en Program.cs).</summary>
     public const int RolAdminId = 1;
@@ -589,6 +595,76 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(c => c.FechaActualizacion).HasConversion(ConversorFechaUtc);
             e.Property(c => c.FechaEnvio).HasConversion(ConversorFechaUtcNullable);
             e.Property(c => c.FechaCreacionWO).HasConversion(ConversorFechaUtcNullable);
+        });
+
+        // ---- Cajas menores (2026-11-27) ----
+        modelBuilder.Entity<Caja>(e =>
+        {
+            e.HasIndex(c => c.Empresa).IsUnique();
+            e.Property(c => c.Tope).HasPrecision(18, 2);
+            e.Property(c => c.SaldoMinimoAlerta).HasPrecision(18, 2);
+            e.Property(c => c.SaldoActual).HasPrecision(18, 2);
+            e.Property(c => c.FechaActualizacion).HasConversion(ConversorFechaUtcNullable);
+            e.HasOne(c => c.ActualizadoPorUsuario).WithMany().HasForeignKey(c => c.ActualizadoPorUsuarioId).OnDelete(DeleteBehavior.NoAction);
+            // Una caja por empresa, con el fondo que dijo el usuario (Jimaco ~2.000.000); el tope lo cambia el administrador.
+            e.HasData(
+                new Caja { Id = 1, Empresa = Empresa.Jimaco, Nombre = "Caja menor Jimaco", Tope = 2_000_000m, Version = new Guid("6f1d2c3a-0000-4000-8000-000000000001") },
+                new Caja { Id = 2, Empresa = Empresa.Ferrealiados, Nombre = "Caja menor Ferrealiados", Tope = 2_000_000m, Version = new Guid("6f1d2c3a-0000-4000-8000-000000000002") });
+        });
+
+        modelBuilder.Entity<ConceptoCaja>(e =>
+        {
+            e.HasIndex(c => new { c.CajaId, c.Nombre }).IsUnique();
+            e.HasOne(c => c.Caja).WithMany(c => c.Conceptos).HasForeignKey(c => c.CajaId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<BeneficiarioCaja>(e =>
+        {
+            e.HasIndex(b => b.Cedula).IsUnique();
+            e.Property(b => b.FechaCreacion).HasConversion(ConversorFechaUtc);
+            e.HasOne(b => b.CreadoPorUsuario).WithMany().HasForeignKey(b => b.CreadoPorUsuarioId).OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<MovimientoCaja>(e =>
+        {
+            e.HasIndex(m => new { m.CajaId, m.Fecha });
+            e.Property(m => m.Valor).HasPrecision(18, 2);
+            e.Property(m => m.SaldoDespues).HasPrecision(18, 2);
+            e.Property(m => m.Fecha).HasConversion(ConversorFechaUtc);
+            e.Property(m => m.FechaAnulacion).HasConversion(ConversorFechaUtcNullable);
+            e.HasOne(m => m.Caja).WithMany(c => c.Movimientos).HasForeignKey(m => m.CajaId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(m => m.GiroCaja).WithMany(g => g.Movimientos).HasForeignKey(m => m.GiroCajaId).OnDelete(DeleteBehavior.NoAction);
+            e.HasOne(m => m.Usuario).WithMany().HasForeignKey(m => m.UsuarioId).OnDelete(DeleteBehavior.NoAction);
+            e.HasOne(m => m.AnuladoPorUsuario).WithMany().HasForeignKey(m => m.AnuladoPorUsuarioId).OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<GiroCaja>(e =>
+        {
+            e.HasIndex(g => new { g.CajaId, g.Numero }).IsUnique();
+            e.HasIndex(g => new { g.CajaId, g.Estado });
+            e.Ignore(g => g.VueltaPendiente);
+            e.Property(g => g.ValorEntregado).HasPrecision(18, 2);
+            e.Property(g => g.ValorLegalizado).HasPrecision(18, 2);
+            e.Property(g => g.ValorVueltasRecibidas).HasPrecision(18, 2);
+            e.Property(g => g.Fecha).HasConversion(ConversorFechaUtc);
+            e.Property(g => g.FechaLegalizacion).HasConversion(ConversorFechaUtcNullable);
+            e.Property(g => g.UltimoRecordatorio).HasConversion(ConversorFechaUtcNullable);
+            e.Property(g => g.FechaAnulacion).HasConversion(ConversorFechaUtcNullable);
+            e.HasOne(g => g.Caja).WithMany(c => c.Giros).HasForeignKey(g => g.CajaId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(g => g.BeneficiarioCaja).WithMany().HasForeignKey(g => g.BeneficiarioCajaId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(g => g.ConceptoCaja).WithMany().HasForeignKey(g => g.ConceptoCajaId).OnDelete(DeleteBehavior.NoAction);
+            e.HasOne(g => g.GiradoPorUsuario).WithMany().HasForeignKey(g => g.GiradoPorUsuarioId).OnDelete(DeleteBehavior.NoAction);
+            e.HasOne(g => g.LegalizadoPorUsuario).WithMany().HasForeignKey(g => g.LegalizadoPorUsuarioId).OnDelete(DeleteBehavior.NoAction);
+            e.HasOne(g => g.AnuladoPorUsuario).WithMany().HasForeignKey(g => g.AnuladoPorUsuarioId).OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<GiroCajaOrdenCompra>(e =>
+        {
+            e.HasKey(o => new { o.GiroCajaId, o.InstanciaDocumentoId });
+            e.HasIndex(o => o.InstanciaDocumentoId);
+            e.Property(o => o.Valor).HasPrecision(18, 2);
+            e.HasOne(o => o.GiroCaja).WithMany(g => g.OrdenesCompra).HasForeignKey(o => o.GiroCajaId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(o => o.InstanciaDocumento).WithMany().HasForeignKey(o => o.InstanciaDocumentoId).OnDelete(DeleteBehavior.NoAction);
         });
     }
 }

@@ -23,4 +23,6 @@ public record LoginResponseDto(string Token, string Nombre, string Email, IReadO
     // Menú Conciliación (2026-11-24) — ver Rol.PuedeVerConciliacion.
     bool PuedeVerConciliacion = false,
     // Menú Cotizaciones (2026-11-25) — ver Rol.PuedeCrearCotizaciones.
-    bool PuedeCrearCotizaciones = false);
+    bool PuedeCrearCotizaciones = false,
+    // Cajas menores (2026-11-27): ve el menú Cajas (cualquiera de los cuatro permisos de caja).
+    bool PuedeVerCajas = false);

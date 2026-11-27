@@ -191,7 +191,9 @@ public record InstanciaDocumentoDetalleDto(
     // true si aprobar el paso actual es confirmar el pago de un "Pago a Proveedor" (pide banco y fecha).
     bool PasoActualConfirmaPagoProveedor = false,
     /// <summary>"Jimaco" o "Ferrealiados" (2026-11-13) — etiqueta en pantalla y marca del PDF.</summary>
-    string Empresa = "Jimaco");
+    string Empresa = "Jimaco",
+    // Cajas menores (2026-11-27): aprobar el paso actual exige que la OC tenga giro de caja (ver PasoFlujo.RequiereGiroCajaAlAprobar).
+    bool PasoActualRequiereGiroCaja = false);
 
 public record EjecutarAccionDto(
     TipoAccion Accion,

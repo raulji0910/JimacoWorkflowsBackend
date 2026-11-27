@@ -106,6 +106,13 @@ public class PasoFlujo
     /// </summary>
     public bool RequiereSoportePagoAlAprobar { get; set; }
 
+    /// <summary>
+    /// Cajas menores (2026-11-27): "Aprobar" acá exige que la OC ya esté pagada con un giro de la caja
+    /// menor de su empresa (<see cref="GiroCajaOrdenCompra"/>). Pensado para "Entrega Asistente
+    /// Gerencia" de las OC de contado hasta $300.000 (Jimaco y Ferrealiados) — se marca en el flujo.
+    /// </summary>
+    public bool RequiereGiroCajaAlAprobar { get; set; }
+
     /// <summary>Pasos anteriores puntuales a los que este paso puede devolver — ver <see cref="PasoFlujoDestinoDevolucion"/>.</summary>
     public ICollection<PasoFlujoDestinoDevolucion> DestinosDevolucion { get; set; } = [];
 

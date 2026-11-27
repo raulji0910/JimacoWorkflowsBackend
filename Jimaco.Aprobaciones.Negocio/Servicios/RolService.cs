@@ -14,7 +14,8 @@ public class RolService(AppDbContext db) : IRolService
             .Select(r => new RolDto(
                 r.Id, r.Nombre, r.Descripcion, r.Activo,
                 r.PuedeDevolverCualquierDocumento, r.PuedeGestionarAlistamiento, r.PuedeVerAlistamiento, r.PuedeVerCuentasPorPagar, r.PuedePagarCuentas,
-                r.PuedeGestionarAlistamientoFerrealiados, r.PuedeVerAlistamientoFerrealiados, r.PuedeConsultarPagos, r.PuedeVerConciliacion, r.PuedeCrearCotizaciones))
+                r.PuedeGestionarAlistamientoFerrealiados, r.PuedeVerAlistamientoFerrealiados, r.PuedeConsultarPagos, r.PuedeVerConciliacion, r.PuedeCrearCotizaciones,
+                r.PuedeAdministrarCajaJimaco, r.PuedeGirarCajaJimaco, r.PuedeAdministrarCajaFerrealiados, r.PuedeGirarCajaFerrealiados))
             .ToListAsync(ct);
 
     public async Task<RolDto> CrearAsync(CrearRolDto dto, CancellationToken ct = default)
@@ -36,7 +37,11 @@ public class RolService(AppDbContext db) : IRolService
             PuedeVerAlistamientoFerrealiados = dto.PuedeVerAlistamientoFerrealiados,
             PuedeConsultarPagos = dto.PuedeConsultarPagos,
             PuedeVerConciliacion = dto.PuedeVerConciliacion,
-            PuedeCrearCotizaciones = dto.PuedeCrearCotizaciones
+            PuedeCrearCotizaciones = dto.PuedeCrearCotizaciones,
+            PuedeAdministrarCajaJimaco = dto.PuedeAdministrarCajaJimaco,
+            PuedeGirarCajaJimaco = dto.PuedeGirarCajaJimaco,
+            PuedeAdministrarCajaFerrealiados = dto.PuedeAdministrarCajaFerrealiados,
+            PuedeGirarCajaFerrealiados = dto.PuedeGirarCajaFerrealiados
         };
         db.Roles.Add(rol);
         await db.SaveChangesAsync(ct);
@@ -65,6 +70,10 @@ public class RolService(AppDbContext db) : IRolService
         rol.PuedeConsultarPagos = dto.PuedeConsultarPagos;
         rol.PuedeVerConciliacion = dto.PuedeVerConciliacion;
         rol.PuedeCrearCotizaciones = dto.PuedeCrearCotizaciones;
+        rol.PuedeAdministrarCajaJimaco = dto.PuedeAdministrarCajaJimaco;
+        rol.PuedeGirarCajaJimaco = dto.PuedeGirarCajaJimaco;
+        rol.PuedeAdministrarCajaFerrealiados = dto.PuedeAdministrarCajaFerrealiados;
+        rol.PuedeGirarCajaFerrealiados = dto.PuedeGirarCajaFerrealiados;
         await db.SaveChangesAsync(ct);
 
         return MapearDto(rol);
@@ -73,5 +82,6 @@ public class RolService(AppDbContext db) : IRolService
     private static RolDto MapearDto(Rol rol) => new(
         rol.Id, rol.Nombre, rol.Descripcion, rol.Activo,
         rol.PuedeDevolverCualquierDocumento, rol.PuedeGestionarAlistamiento, rol.PuedeVerAlistamiento, rol.PuedeVerCuentasPorPagar, rol.PuedePagarCuentas,
-        rol.PuedeGestionarAlistamientoFerrealiados, rol.PuedeVerAlistamientoFerrealiados, rol.PuedeConsultarPagos, rol.PuedeVerConciliacion, rol.PuedeCrearCotizaciones);
+        rol.PuedeGestionarAlistamientoFerrealiados, rol.PuedeVerAlistamientoFerrealiados, rol.PuedeConsultarPagos, rol.PuedeVerConciliacion, rol.PuedeCrearCotizaciones,
+        rol.PuedeAdministrarCajaJimaco, rol.PuedeGirarCajaJimaco, rol.PuedeAdministrarCajaFerrealiados, rol.PuedeGirarCajaFerrealiados);
 }
